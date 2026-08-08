@@ -4,6 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <title>KLIPP</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#c15c86">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
 <style>
   :root{
     /* Little Jord register: bloom pink over soft paper, hearts as everyday currency */
@@ -77,7 +81,12 @@
   .film-card .poster.landscape{aspect-ratio:16/9}
   .film-card .poster img{width:100%;height:100%;object-fit:cover;display:block}
   .film-card .label{padding:10px 12px 12px}
-  .film-card .name{font-weight:700;font-size:15px;transform:rotate(-1deg);display:inline-block}
+  .film-card .poster-btn{display:block;width:100%;text-align:left}
+  .film-card .name{
+    font-weight:700;font-size:15px;transform:rotate(-1deg);display:inline-block;
+    color:inherit;min-height:32px;padding:2px 4px;margin:-2px -4px;border-radius:8px;
+  }
+  .film-card .name:active{background:var(--faint)}
   .film-card .count{font-size:12px;color:var(--ink-2);margin-top:2px}
   .empty-shelf{padding:40px 10px;text-align:center;color:var(--ink-2)}
   .empty-shelf .big{font-size:44px;margin-bottom:8px}
@@ -187,6 +196,55 @@
     box-shadow:0 4px 12px rgba(0,0,0,0.25);
   }
   .side-btn:disabled{opacity:.35}
+
+  /* ---------- STICKERS: wand tray, stage overlay, give it back cloud ---------- */
+  #sticker-stage{position:absolute;inset:0;z-index:6;touch-action:none}
+  #sticker-tray{
+    position:fixed;inset:0;background:rgba(58,43,48,0.45);display:none;
+    align-items:flex-end;justify-content:center;z-index:60;
+  }
+  #sticker-tray.open{display:flex}
+  .sticker-tray-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;padding:6px 0 4px}
+  .sticker-tray-btn{
+    aspect-ratio:1;border-radius:var(--radius-md);background:var(--faint);
+    display:flex;align-items:center;justify-content:center;border:2px solid var(--grid);
+  }
+  .sticker-tray-btn.picked{background:var(--bloom);border-color:var(--bloom-deep)}
+  .sticker-tray-btn canvas{width:70%;height:70%}
+  #sticker-cloud{
+    position:fixed;left:50%;top:16px;transform:translate(-50%,-140%);
+    background:var(--surface);color:var(--ink-2);padding:12px 18px;border-radius:20px;
+    font-weight:700;font-size:14px;box-shadow:0 8px 20px rgba(0,0,0,0.25);z-index:65;
+    display:none;transition:transform .15s ease;
+  }
+  #sticker-cloud.show{display:block;transform:translate(-50%,0)}
+  #sticker-cloud.armed{background:var(--crit);color:#fff}
+
+  /* ---------- RENAME SHEET ---------- */
+  #rename-sheet{
+    position:fixed;inset:0;background:rgba(58,43,48,0.45);display:none;
+    align-items:flex-end;justify-content:center;z-index:60;
+  }
+  #rename-sheet.open{display:flex}
+  #rename-input{
+    width:100%;min-height:var(--tap-min);border-radius:var(--radius-md);border:2px solid var(--grid);
+    background:var(--faint);color:var(--ink);font-size:18px;font-weight:700;padding:0 16px;text-align:center;
+  }
+  #save-rename{
+    display:block;width:100%;min-height:56px;border-radius:var(--radius-md);background:var(--bloom-deep);
+    color:#fff;font-weight:800;font-size:16px;margin-top:16px;
+  }
+
+  /* ---------- SPELLS ROW (playback filters) ---------- */
+  .spells-row{
+    position:absolute;left:0;right:0;bottom:calc(112px + env(safe-area-inset-bottom,0px));
+    display:flex;justify-content:center;gap:8px;padding:0 16px;flex-wrap:wrap;z-index:9;
+  }
+  .spell-btn{
+    background:rgba(255,255,255,0.9);color:var(--ink);border-radius:16px;padding:10px 14px;
+    font-size:13px;font-weight:700;min-height:40px;box-shadow:0 4px 12px rgba(0,0,0,0.2);
+  }
+  .spell-btn.active{background:var(--bloom-deep);color:#fff}
 
   /* ---------- UNDO TOAST ---------- */
   #undo-toast{
@@ -322,6 +380,26 @@
   </div>
 </div>
 
+<!-- sticker tray sheet -->
+<div id="sticker-tray">
+  <div class="sheet-body">
+    <div class="sheet-title">pick some magic</div>
+    <div class="sticker-tray-grid" id="sticker-tray-grid"></div>
+    <button class="sheet-cancel" id="cancel-sticker-tray" type="button">never mind</button>
+  </div>
+</div>
+<div id="sticker-cloud" aria-hidden="true">&#9729; give it back</div>
+
+<!-- rename sheet -->
+<div id="rename-sheet">
+  <div class="sheet-body">
+    <div class="sheet-title">what should we call it?</div>
+    <input id="rename-input" type="text" maxlength="24" autocomplete="off">
+    <button id="save-rename" type="button">save the name</button>
+    <button class="sheet-cancel" id="cancel-rename" type="button">never mind</button>
+  </div>
+</div>
+
 <!-- ============ STUDIO ============ -->
 <div id="view-studio" class="view">
   <div class="stage-wrap">
@@ -329,6 +407,7 @@
     <canvas id="demo-canvas" width="1280" height="720" style="display:none"></canvas>
     <img id="onion-img" alt="">
     <div id="stage-flash"></div>
+    <canvas id="sticker-stage" width="10" height="10" aria-hidden="true"></canvas>
     <div id="camera-msg">
       <div class="sad">&#128546;</div>
       <div id="camera-msg-text">we could not see the camera. can a grown up help?</div>
@@ -337,6 +416,8 @@
     <div class="studio-topbar">
       <button class="round-btn" id="back-to-shelf" type="button" aria-label="back to shelf">&#8592;</button>
       <div class="top-right-btns">
+        <button class="round-btn" id="wand-btn" type="button" aria-label="magic wand">&#10024;</button>
+        <button class="round-btn" id="cards-toggle" type="button" aria-label="title and end cards toggle">&#127916;</button>
         <button class="round-btn" id="ghost-toggle" type="button" aria-label="ghost toggle">&#128123;</button>
         <button class="send-btn" id="send-btn-studio" type="button" aria-label="send film">&#128233;</button>
       </div>
@@ -364,6 +445,7 @@
       <button class="round-btn" id="playback-back" type="button" aria-label="back to studio">&#8592;</button>
       <button class="send-btn" id="send-btn-playback" type="button" aria-label="send film">&#128233;</button>
     </div>
+    <div class="spells-row" id="spells-row"></div>
   </div>
   <div class="playback-bottom">
     <button id="replay-btn" type="button" aria-label="play again">&#9654;</button>
@@ -581,7 +663,8 @@ var state = {
   playing: false,
   lastCaptureAt: 0,
   undoBuffer: null,    /* {frame, timeoutId} */
-  gearHeld: false
+  gearHeld: false,
+  placingSticker: null /* sticker kind waiting for a tap on the stage */
 };
 
 var SETTINGS_KEY = "klipp_onion_default";
@@ -622,16 +705,16 @@ function renderShelf(){
     }
     var frag = document.createDocumentFragment();
     films.forEach(function(film){
-      var card = document.createElement("button");
-      card.type = "button";
+      var card = document.createElement("div");
       card.className = "film-card";
       card.setAttribute("data-film-id", film.id);
       var posterClass = film.orientation === "portrait" ? "portrait" : "landscape";
       card.innerHTML =
-        '<div class="poster ' + posterClass + '" data-poster="' + film.id + '">&#127909;</div>' +
-        '<div class="label"><div class="name">' + escapeHtml(film.name || "Film") + ' &hearts;</div>' +
+        '<button type="button" class="poster-btn"><div class="poster ' + posterClass + '" data-poster="' + film.id + '">&#127909;</div></button>' +
+        '<div class="label"><button type="button" class="name">' + escapeHtml(film.name || "Film") + ' &hearts;</button>' +
         '<div class="count">' + (film.frameCount||0) + ' frame' + (film.frameCount===1?"":"s") + '</div></div>';
-      card.addEventListener("click", function(){ openFilm(film.id); });
+      card.querySelector(".poster-btn").addEventListener("click", function(){ openFilm(film.id); });
+      card.querySelector(".name").addEventListener("click", function(){ openRenameSheet(film.id, film.name); });
       frag.appendChild(card);
     });
     grid.appendChild(frag);
@@ -669,6 +752,7 @@ function newFilm(orientation){
     var names = films.map(function(f){ return f.name; });
     return db.addFilm(orientation).then(function(film){
       film.name = nextFilmName(names);
+      ensureFilmMagicFields(film);
       return db.updateFilm(film).then(function(){ return film; });
     });
   }).then(function(film){
@@ -679,6 +763,7 @@ function newFilm(orientation){
 /* ---------------- STUDIO ---------------- */
 function openFilm(filmId){
   return db.getFilm(filmId).then(function(film){
+    ensureFilmMagicFields(film);
     state.currentFilm = film;
     state.onionSkinOn = state.onionSkinDefault;
     return db.getFrames(filmId);
@@ -690,6 +775,8 @@ function openFilm(filmId){
     renderFilmstrip();
     updateOnionSkin();
     updateUndoAvailability();
+    updateCardsToggle();
+    renderStickerOverlay();
     startCameraOrDemo();
   });
 }
@@ -728,9 +815,163 @@ $("ghost-toggle").addEventListener("click", function(){
   updateOnionSkin();
 });
 
+/* ---------------- MAGIC LAYER: title/end cards toggle ---------------- */
+function updateCardsToggle(){
+  var btn = $("cards-toggle");
+  var on = !!(state.currentFilm && state.currentFilm.cardsOn);
+  btn.classList.toggle("active", on);
+}
+$("cards-toggle").addEventListener("click", function(){
+  if (!state.currentFilm) return;
+  setCardsOn(!state.currentFilm.cardsOn);
+  updateCardsToggle();
+  showHeartToast(state.currentFilm.cardsOn ? "the film will open and end with a little magic" : "no more start and end cards for this film");
+});
+
+/* ---------------- MAGIC LAYER: wand tray + sticker stage overlay ---------------- */
+var stickerPreviewRAF = null;
+var stickerDrag = null; /* {id, pointerId} while dragging */
+
+function buildStickerTray(){
+  var grid = $("sticker-tray-grid");
+  if (grid.childNodes.length) return; /* built once */
+  STICKER_KINDS.forEach(function(kind){
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "sticker-tray-btn";
+    btn.setAttribute("data-sid", kind);
+    var canvas = document.createElement("canvas");
+    canvas.width = 64; canvas.height = 64;
+    var ctx = canvas.getContext("2d");
+    drawSticker(ctx, kind, 32, 32, 22, stringToSeed(kind), 0);
+    btn.appendChild(canvas);
+    btn.addEventListener("click", function(){
+      state.placingSticker = kind;
+      $("sticker-tray").classList.remove("open");
+      showHeartToast("tap the stage to put it down");
+    });
+    grid.appendChild(btn);
+  });
+}
+$("wand-btn").addEventListener("click", function(){
+  buildStickerTray();
+  $("sticker-tray").classList.add("open");
+});
+$("cancel-sticker-tray").addEventListener("click", function(){
+  $("sticker-tray").classList.remove("open");
+});
+
+function stageOverlayCanvas(){ return $("sticker-stage"); }
+function syncStickerOverlaySize(){
+  var canvas = stageOverlayCanvas();
+  var wrap = canvas.parentElement;
+  var w = wrap.clientWidth || 1, h = wrap.clientHeight || 1;
+  if (canvas.width !== w) canvas.width = w;
+  if (canvas.height !== h) canvas.height = h;
+  return { w: w, h: h };
+}
+function renderStickerOverlay(){
+  var canvas = stageOverlayCanvas();
+  var ctx = canvas.getContext("2d");
+  var size = syncStickerOverlaySize();
+  ctx.clearRect(0, 0, size.w, size.h);
+  var film = state.currentFilm;
+  if (!film || !film.stickers) return;
+  var tick = Math.floor((typeof performance !== "undefined" ? performance.now() : Date.now()) / 83);
+  film.stickers.forEach(function(st){
+    drawSticker(ctx, st.sid, st.x * size.w, st.y * size.h, Math.min(size.w, size.h) * 0.12, st.seed, tick);
+  });
+  if (state.view === "studio" && !stickerPreviewRAF && typeof requestAnimationFrame !== "undefined"){
+    stickerPreviewRAF = requestAnimationFrame(function(){ stickerPreviewRAF = null; renderStickerOverlay(); });
+  }
+}
+function stopStickerPreview(){
+  if (stickerPreviewRAF && typeof cancelAnimationFrame !== "undefined") cancelAnimationFrame(stickerPreviewRAF);
+  stickerPreviewRAF = null;
+}
+function pointToFraction(evt){
+  var canvas = stageOverlayCanvas();
+  var rect = canvas.getBoundingClientRect();
+  var w = rect.width || 1, h = rect.height || 1;
+  return { x: clamp01((evt.clientX - rect.left) / w), y: clamp01((evt.clientY - rect.top) / h) };
+}
+function nearestSticker(xFrac, yFrac){
+  var film = state.currentFilm;
+  if (!film || !film.stickers || !film.stickers.length) return null;
+  var best = null, bestDist = Infinity;
+  film.stickers.forEach(function(st){
+    var dx = st.x - xFrac, dy = st.y - yFrac;
+    var d = dx * dx + dy * dy;
+    if (d < bestDist){ bestDist = d; best = st; }
+  });
+  /* roughly a sticker's own footprint, in fraction space (~0.09) */
+  return (best && bestDist < 0.09 * 0.09 * 4) ? best : null;
+}
+function overCloud(evt){
+  var cloud = $("sticker-cloud");
+  var r = cloud.getBoundingClientRect();
+  return evt.clientX >= r.left && evt.clientX <= r.right && evt.clientY >= r.top && evt.clientY <= r.bottom;
+}
+stageOverlayCanvas().addEventListener("pointerdown", function(evt){
+  if (!state.currentFilm) return;
+  var pos = pointToFraction(evt);
+  if (state.placingSticker){
+    var kind = state.placingSticker;
+    state.placingSticker = null;
+    addSticker(kind, pos.x, pos.y);
+    renderStickerOverlay();
+    return;
+  }
+  var hit = nearestSticker(pos.x, pos.y);
+  if (!hit) return;
+  stickerDrag = { id: hit.id, pointerId: evt.pointerId };
+  $("sticker-cloud").classList.add("show");
+});
+stageOverlayCanvas().addEventListener("pointermove", function(evt){
+  if (!stickerDrag || evt.pointerId !== stickerDrag.pointerId) return;
+  var pos = pointToFraction(evt);
+  moveSticker(stickerDrag.id, pos.x, pos.y);
+  $("sticker-cloud").classList.toggle("armed", overCloud(evt));
+  renderStickerOverlay();
+});
+function endStickerDrag(evt){
+  if (!stickerDrag || (evt && evt.pointerId !== stickerDrag.pointerId)) return;
+  var dragged = stickerDrag;
+  stickerDrag = null;
+  $("sticker-cloud").classList.remove("show", "armed");
+  if (evt && overCloud(evt)){
+    removeSticker(dragged.id);
+    renderStickerOverlay();
+  }
+}
+stageOverlayCanvas().addEventListener("pointerup", endStickerDrag);
+stageOverlayCanvas().addEventListener("pointercancel", endStickerDrag);
+
+/* ---------------- MAGIC LAYER: rename sheet ---------------- */
+var pendingRenameId = null;
+function openRenameSheet(filmId, currentName){
+  pendingRenameId = filmId;
+  $("rename-input").value = currentName || "";
+  $("rename-sheet").classList.add("open");
+}
+$("save-rename").addEventListener("click", function(){
+  if (!pendingRenameId) return;
+  var name = $("rename-input").value;
+  var id = pendingRenameId;
+  pendingRenameId = null;
+  $("rename-sheet").classList.remove("open");
+  renameFilm(id, name).then(function(){ renderShelf(); });
+});
+$("cancel-rename").addEventListener("click", function(){
+  pendingRenameId = null;
+  $("rename-sheet").classList.remove("open");
+});
+
 $("back-to-shelf").addEventListener("click", function(){ backToShelf(); });
 function backToShelf(){
   stopCamera();
+  stopStickerPreview();
+  state.placingSticker = null;
   state.currentFilm = null;
   state.view = "shelf";
   showView("shelf");
@@ -962,13 +1203,31 @@ $("undo-restore-btn").addEventListener("click", restoreLast);
 
 /* ---------------- PLAYBACK ---------------- */
 var FPS = 12, HOLD_TICKS = 3; /* each photo held 3 ticks of a 12fps clock: 4 photos/sec */
-var playTimer = null, playIndex = 0, playTickCount = 0;
+var playTimer = null, playIndex = 0, playTickCount = 0, playGlobalTick = 0, playTotalTicks = 1;
 var heartDriftTimer = null;
+var playbackImgCache = {};
+
+/* the quick in-app loop never shows the title/end cards (those are the
+   export bookends, see filmTimelineOpts), but a spell's last-photo-hold
+   stretch and every placed sticker's alive per-frame motion do play here,
+   using the same drawSticker/applyFilmFilter draw functions export uses. */
+function playbackHoldTicks(photoIndex, totalPhotos, film){
+  if (film && film.filter === "fireworks" && photoIndex === totalPhotos - 1) return FIREWORKS_HOLD_TICKS;
+  return HOLD_TICKS;
+}
+function playbackTotalTicks(totalPhotos, film){
+  var opts = { lastHoldTicks: (film && film.filter === "fireworks") ? FIREWORKS_HOLD_TICKS : HOLD_TICKS };
+  return buildFrameTimeline(totalPhotos, opts).length || 1;
+}
+function hasActiveMagic(film){
+  return !!(film && ((film.stickers && film.stickers.length) || (film.filter && film.filter !== "none")));
+}
 
 function startPlayback(){
   if (!state.currentFilm) return;
   state.view = "playback";
   showView("playback");
+  renderSpellsRow();
   if (!state.frames.length){
     var ctx = $("playback-canvas").getContext("2d");
     ctx.clearRect(0,0,$("playback-canvas").width,$("playback-canvas").height);
@@ -981,8 +1240,11 @@ function startPlayback(){
   canvas.height = size.h;
   playIndex = 0;
   playTickCount = 0;
+  playGlobalTick = 0;
+  playbackImgCache = {};
+  playTotalTicks = playbackTotalTicks(state.frames.length, state.currentFilm);
   state.playing = true;
-  drawPlaybackFrame(0);
+  drawPlaybackFrame(0, 0, false);
   clearInterval(playTimer);
   playTimer = setInterval(playTick, 1000 / FPS);
   clearInterval(heartDriftTimer);
@@ -990,24 +1252,50 @@ function startPlayback(){
 }
 function playTick(){
   playTickCount++;
-  if (playTickCount >= HOLD_TICKS){
+  playGlobalTick++;
+  var film = state.currentFilm;
+  var totalPhotos = state.frames.length;
+  var holdLen = playbackHoldTicks(playIndex, totalPhotos, film);
+  var advanced = false;
+  if (playTickCount >= holdLen){
     playTickCount = 0;
     playIndex++;
-    if (playIndex >= state.frames.length){
+    if (playIndex >= totalPhotos){
       playIndex = 0;
+      playGlobalTick = 0;
     }
-    drawPlaybackFrame(playIndex);
+    advanced = true;
+  }
+  if (advanced || hasActiveMagic(film)) drawPlaybackFrame(playIndex, playGlobalTick, !advanced);
+}
+function drawPlaybackOverlay(ctx, w, h, tick){
+  var film = state.currentFilm;
+  if (!film) return;
+  (film.stickers || []).forEach(function(st){
+    drawSticker(ctx, st.sid, st.x * w, st.y * h, Math.min(w, h) * 0.12, st.seed, tick);
+  });
+  if (film.filter && film.filter !== "none"){
+    applyFilmFilter(ctx, film.filter, w, h, tick, playTotalTicks, filmSeed(film));
   }
 }
-function drawPlaybackFrame(i){
+function drawPlaybackFrame(i, tick, overlayOnly){
   var frame = state.frames[i];
   if (!frame) return;
   var canvas = $("playback-canvas");
   var ctx = canvas.getContext("2d");
-  var img = new Image();
-  img.onload = function(){
+  function paint(img){
     ctx.clearRect(0,0,canvas.width,canvas.height);
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    drawPlaybackOverlay(ctx, canvas.width, canvas.height, tick);
+  }
+  if (overlayOnly && playbackImgCache[i]){
+    paint(playbackImgCache[i]);
+    return;
+  }
+  var img = new Image();
+  img.onload = function(){
+    playbackImgCache[i] = img;
+    paint(img);
   };
   img.src = frame.url;
 }
@@ -1017,6 +1305,34 @@ function stopPlayback(){
   clearInterval(heartDriftTimer);
   playTimer = null;
   heartDriftTimer = null;
+}
+
+/* ---------------- MAGIC LAYER: spells row ---------------- */
+var SPELLS = [
+  { id: "none", label: "plain" },
+  { id: "heartfall", label: "heart rain" },
+  { id: "pinkout", label: "pink glow" },
+  { id: "fireworks", label: "sparkle end" }
+];
+function renderSpellsRow(){
+  var row = $("spells-row");
+  row.innerHTML = "";
+  var film = state.currentFilm;
+  var active = (film && film.filter) || "none";
+  SPELLS.forEach(function(spell){
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "spell-btn" + (spell.id === active ? " active" : "");
+    btn.setAttribute("data-filter", spell.id);
+    btn.textContent = spell.label;
+    btn.addEventListener("click", function(){
+      setFilmFilter(spell.id);
+      renderSpellsRow();
+      playTotalTicks = playbackTotalTicks(state.frames.length, state.currentFilm);
+      drawPlaybackFrame(playIndex, playGlobalTick, false);
+    });
+    row.appendChild(btn);
+  });
 }
 function spawnPlaybackHeart(){
   var wrap = $("playback-hearts");
@@ -1046,20 +1362,424 @@ $("playback-back").addEventListener("click", function(){
    before calling exportFilm and this code will see the stub. */
 
 /* pure, no I/O: the exact frame timeline a photoCount-long film produces.
-   Length is always photoCount * HOLD_TICKS, timestamps and durations are
-   explicit microseconds on a 12fps clock, frame exact. Exposed on
-   window.KLIPP for the jsdom harness to assert against without touching a
-   real encoder. */
-function buildFrameTimeline(photoCount){
+   opts.titleTicks / opts.endingTicks add a title-card and end-card run of
+   ticks before/after the photos; opts.lastHoldTicks changes how long the
+   very last photo holds (the fireworks-ending spell stretches it to
+   FIREWORKS_HOLD_TICKS). With no opts, behaves exactly as before: length is
+   photoCount * HOLD_TICKS, timestamps and durations explicit microseconds
+   on a 12fps clock, frame exact. Exposed on window.KLIPP for the jsdom
+   harness to assert against without touching a real encoder. */
+function buildFrameTimeline(photoCount, opts){
+  opts = opts || {};
+  var titleTicks = opts.titleTicks || 0;
+  var endingTicks = opts.endingTicks || 0;
+  var lastHoldTicks = opts.lastHoldTicks || HOLD_TICKS;
   var tickUs = Math.round(1e6 / FPS);
   var timeline = [];
+  var frameIndex = 0;
+  function push(entry){
+    entry.timestamp = frameIndex * tickUs;
+    entry.duration = tickUs;
+    entry.frameIndex = frameIndex;
+    timeline.push(entry);
+    frameIndex++;
+  }
+  var t;
+  for (t = 0; t < titleTicks; t++) push({ segment: "title", segmentTick: t });
   for (var p = 0; p < photoCount; p++){
-    for (var t = 0; t < HOLD_TICKS; t++){
-      var frameIndex = p * HOLD_TICKS + t;
-      timeline.push({ photoIndex: p, timestamp: frameIndex * tickUs, duration: tickUs });
+    var holds = (p === photoCount - 1) ? lastHoldTicks : HOLD_TICKS;
+    for (t = 0; t < holds; t++) push({ segment: "photo", photoIndex: p, segmentTick: t });
+  }
+  for (t = 0; t < endingTicks; t++) push({ segment: "end", segmentTick: t });
+  return timeline;
+}
+
+/* the film-level knobs (cards on/off, fireworks-ending) turned into the
+   opts buildFrameTimeline wants, kept in one place so export and any future
+   caller compute the same timeline the same way. */
+function filmTimelineOpts(film){
+  var fireworks = !!(film && film.filter === "fireworks");
+  var cardsOn = !!(film && film.cardsOn);
+  return {
+    titleTicks: cardsOn ? TITLE_TICKS : 0,
+    endingTicks: cardsOn ? END_TICKS : 0,
+    lastHoldTicks: fireworks ? FIREWORKS_HOLD_TICKS : HOLD_TICKS
+  };
+}
+function buildFilmTimeline(film, photoCount){
+  return buildFrameTimeline(photoCount, filmTimelineOpts(film));
+}
+
+/* ---------------- MAGIC LAYER: palette, deterministic randomness ----------------
+   Exported video is a fixed set of pixels, not a themed surface, so the
+   magic layer draws with its own fixed bloom-pink palette (mirroring the
+   light --bloom family of custom properties) rather than reading CSS
+   variables at draw time. */
+var PALETTE = {
+  bloom: "#e8a0bb", bloom2: "#d97fa3", bloomDeep: "#c15c86",
+  sun: "#f0c96b", leaf: "#8fc7a3", water: "#8fbfd6",
+  ink: "#3a2b30", paper: "#fdf6f8", faint: "#f3dbe4"
+};
+
+var TITLE_TICKS = 12, END_TICKS = 12, FIREWORKS_HOLD_TICKS = 12;
+var STICKER_CAP = 12;
+var STICKER_KINDS = ["heart", "sparkle", "rainbow", "star", "trex", "rabbit", "rock"];
+
+/* a tiny, seedable, non-cryptographic hash. Same (a,b,c) always gives the
+   same number back, which is the whole point: a sticker's twinkle/wobble is
+   a pure function of (seed, frameIndex), not of when it happened to be
+   drawn, so playback and export produce identical motion. */
+function klippHash(a, b, c){
+  var x = (a * 374761393 + b * 668265263 + c * 2246822519) | 0;
+  x = (x ^ (x >>> 13)) * 1274126177;
+  x = (x ^ (x >>> 16)) | 0;
+  return (x >>> 0);
+}
+function klippRand(seed, frameIndex, salt){
+  return (klippHash(seed | 0, frameIndex | 0, (salt || 0) | 0) % 100000) / 100000;
+}
+function stringToSeed(s){
+  var h = 0;
+  for (var i = 0; i < s.length; i++){ h = (h * 31 + s.charCodeAt(i)) | 0; }
+  return Math.abs(h);
+}
+function filmSeed(film){ return stringToSeed(String((film && film.id) || "")); }
+function clamp01(n){ return Math.max(0, Math.min(1, n)); }
+
+/* deterministic per-frame variation for a placed sticker: same seed and
+   frame index always gives the same twinkle scale, wobble angle and heart
+   pulse, exposed on window.KLIPP so the harness can prove determinism
+   without ever drawing to a canvas. */
+function stickerVariation(seed, frameIndex){
+  var phase = klippRand(seed, 0, 11) * Math.PI * 2;
+  var twinkle = 1 + Math.sin(frameIndex * 0.5 + phase) * 0.08;
+  var wobble = Math.sin(frameIndex * 0.33 + phase * 1.4) * 0.12;
+  var pulse = 1 + Math.abs(Math.sin(frameIndex * 0.4 + phase * 0.6)) * 0.14;
+  return { scale: twinkle, rotation: wobble, pulse: pulse };
+}
+
+/* ---------------- MAGIC LAYER: the cast, redrawn as KLIPP's own canvas art ----
+   Same hand-drawn register as Little Jord (round, wobbly, soft washes) but
+   these are canvas path draws, not SVG, because they have to composite into
+   the exported video pixel for pixel, not just render on screen. Each shape
+   is drawn centered on the origin at roughly [-size, size] so callers just
+   translate/rotate/scale into place. */
+function drawHeartShape(ctx, size, fillColor){
+  var s = size;
+  ctx.fillStyle = fillColor || PALETTE.bloomDeep;
+  ctx.beginPath();
+  ctx.moveTo(0, s * 0.32);
+  ctx.bezierCurveTo(-s * 0.55, -s * 0.28, -s * 0.98, s * 0.18, 0, s * 0.62);
+  ctx.bezierCurveTo(s * 0.98, s * 0.18, s * 0.55, -s * 0.28, 0, s * 0.32);
+  ctx.closePath();
+  ctx.fill();
+}
+function drawSparkleShape(ctx, size){
+  var s = size;
+  ctx.fillStyle = PALETTE.sun;
+  ctx.beginPath();
+  ctx.moveTo(0, -s); ctx.lineTo(s * 0.22, -s * 0.22); ctx.lineTo(s, 0);
+  ctx.lineTo(s * 0.22, s * 0.22); ctx.lineTo(0, s); ctx.lineTo(-s * 0.22, s * 0.22);
+  ctx.lineTo(-s, 0); ctx.lineTo(-s * 0.22, -s * 0.22);
+  ctx.closePath();
+  ctx.fill();
+}
+function drawStarShape(ctx, size){
+  var spikes = 5, outer = size, inner = size * 0.45;
+  ctx.fillStyle = PALETTE.bloom;
+  ctx.beginPath();
+  for (var i = 0; i < spikes * 2; i++){
+    var r = (i % 2 === 0) ? outer : inner;
+    var ang = (Math.PI / spikes) * i - Math.PI / 2;
+    var x = Math.cos(ang) * r, y = Math.sin(ang) * r;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+  ctx.fill();
+}
+function drawRainbowShape(ctx, size){
+  var colors = [PALETTE.bloomDeep, PALETTE.sun, PALETTE.leaf, PALETTE.water];
+  for (var i = 0; i < colors.length; i++){
+    ctx.strokeStyle = colors[i];
+    ctx.beginPath();
+    ctx.arc(0, size * 0.4, size * (0.95 - i * 0.18), Math.PI, 0, false);
+    ctx.stroke();
+  }
+}
+function drawTrexShape(ctx, size){
+  var s = size;
+  ctx.fillStyle = PALETTE.bloom;
+  ctx.beginPath();
+  ctx.moveTo(-s * 0.8, s * 0.3);
+  ctx.quadraticCurveTo(-s * 0.5, -s * 0.1, 0, -s * 0.3);
+  ctx.quadraticCurveTo(s * 0.4, -s * 0.6, s * 0.75, -s * 0.25);
+  ctx.quadraticCurveTo(s * 0.55, s * 0.05, s * 0.15, -s * 0.05);
+  ctx.quadraticCurveTo(s * 0.1, s * 0.25, s * 0.15, s * 0.4);
+  ctx.lineTo(-s * 0.15, s * 0.4);
+  ctx.quadraticCurveTo(-s * 0.1, s * 0.15, -s * 0.4, s * 0.15);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = PALETTE.ink;
+  ctx.beginPath();
+  ctx.arc(s * 0.55, -s * 0.32, s * 0.06, 0, Math.PI * 2);
+  ctx.fill();
+}
+function drawRabbitShape(ctx, size){
+  var s = size;
+  ctx.fillStyle = PALETTE.paper;
+  ctx.strokeStyle = PALETTE.ink;
+  ctx.beginPath();
+  ctx.moveTo(-s * 0.15, -s * 0.2);
+  ctx.quadraticCurveTo(-s * 0.35, -s * 0.9, -s * 0.1, -s * 0.95);
+  ctx.quadraticCurveTo(s * 0.05, -s * 0.6, s * 0.02, -s * 0.2);
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(s * 0.15, -s * 0.2);
+  ctx.quadraticCurveTo(s * 0.4, -s * 0.9, s * 0.55, -s * 0.85);
+  ctx.quadraticCurveTo(s * 0.4, -s * 0.5, s * 0.28, -s * 0.18);
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(0, s * 0.05, s * 0.45, 0, Math.PI * 2);
+  ctx.fill(); ctx.stroke();
+  ctx.fillStyle = PALETTE.ink;
+  ctx.beginPath(); ctx.arc(s * 0.18, -s * 0.02, s * 0.05, 0, Math.PI * 2); ctx.fill();
+}
+function drawRockShape(ctx, size){
+  var s = size;
+  ctx.fillStyle = PALETTE.faint;
+  ctx.strokeStyle = PALETTE.ink;
+  ctx.beginPath();
+  ctx.moveTo(-s * 0.75, s * 0.35);
+  ctx.quadraticCurveTo(-s * 0.85, -s * 0.3, -s * 0.15, -s * 0.6);
+  ctx.quadraticCurveTo(s * 0.5, -s * 0.75, s * 0.75, -s * 0.15);
+  ctx.quadraticCurveTo(s * 0.9, s * 0.35, s * 0.25, s * 0.4);
+  ctx.closePath();
+  ctx.fill(); ctx.stroke();
+  ctx.fillStyle = PALETTE.ink;
+  ctx.beginPath(); ctx.arc(-s * 0.15, -s * 0.05, s * 0.08, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(s * 0.2, -s * 0.08, s * 0.08, 0, Math.PI * 2); ctx.fill();
+}
+function drawStickerShape(ctx, kind, size){
+  if (kind === "heart") drawHeartShape(ctx, size);
+  else if (kind === "sparkle") drawSparkleShape(ctx, size);
+  else if (kind === "star") drawStarShape(ctx, size);
+  else if (kind === "rainbow") drawRainbowShape(ctx, size);
+  else if (kind === "trex") drawTrexShape(ctx, size);
+  else if (kind === "rabbit") drawRabbitShape(ctx, size);
+  else if (kind === "rock") drawRockShape(ctx, size);
+}
+/* the one draw entry point for a placed sticker: alive, per frame, from
+   (seed, frameIndex) alone. Called identically from the studio overlay
+   preview, playback, and export. */
+function drawSticker(ctx, kind, cx, cy, baseSize, seed, frameIndex){
+  var v = stickerVariation(seed, frameIndex);
+  var scale = v.scale * (kind === "heart" ? v.pulse : 1);
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(v.rotation);
+  ctx.scale(scale, scale);
+  drawStickerShape(ctx, kind, baseSize);
+  ctx.restore();
+}
+
+/* ---------------- MAGIC LAYER: whole-film spells ----------------
+   Every spell is one draw function shaped (ctx, w, h, frameIndex,
+   totalFrames, seed), called from playback and export alike so a spell
+   looks the same everywhere. CSS never touches these, so they survive into
+   the exported video. */
+function drawFilterHeartfall(ctx, w, h, frameIndex, totalFrames, seed){
+  var count = 6;
+  for (var i = 0; i < count; i++){
+    var speed = 0.6 + klippRand(seed, i, 202) * 0.5;
+    var travel = ((frameIndex * speed) + klippRand(seed, i, 303) * 40) % 40;
+    var x = klippRand(seed, i, 101) * w;
+    var y = (travel / 40) * (h + 60) - 30;
+    var size = 10 + klippRand(seed, i, 404) * 10;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(size / 40, size / 40);
+    drawHeartShape(ctx, 40, PALETTE.bloom);
+    ctx.restore();
+  }
+}
+function drawFilterPinkout(ctx, w, h){
+  ctx.fillStyle = "rgba(232,160,187,0.32)";
+  ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = "rgba(216,110,150,0.12)";
+  ctx.fillRect(0, 0, w, h);
+}
+function drawFilterFireworks(ctx, w, h, frameIndex, totalFrames, seed){
+  var startFrame = totalFrames - FIREWORKS_HOLD_TICKS;
+  if (frameIndex < startFrame) return;
+  var local = frameIndex - startFrame;
+  var bursts = 3;
+  for (var i = 0; i < bursts; i++){
+    var bx = (0.2 + klippRand(seed, i, 501) * 0.6) * w;
+    var by = (0.15 + klippRand(seed, i, 502) * 0.5) * h;
+    var startTick = Math.floor(klippRand(seed, i, 503) * 6);
+    var age = local - startTick;
+    if (age < 0 || age > 6) continue;
+    var radius = (age / 6) * (Math.min(w, h) * 0.22);
+    var petals = 8;
+    var color = [PALETTE.sun, PALETTE.bloom, PALETTE.water][i % 3];
+    ctx.strokeStyle = color;
+    for (var p = 0; p < petals; p++){
+      var ang = (Math.PI * 2 / petals) * p;
+      ctx.beginPath();
+      ctx.moveTo(bx, by);
+      ctx.lineTo(bx + Math.cos(ang) * radius, by + Math.sin(ang) * radius);
+      ctx.stroke();
     }
   }
-  return timeline;
+}
+function applyFilmFilter(ctx, filterName, w, h, frameIndex, totalFrames, seed){
+  if (filterName === "heartfall") drawFilterHeartfall(ctx, w, h, frameIndex, totalFrames, seed);
+  else if (filterName === "pinkout") drawFilterPinkout(ctx, w, h, frameIndex, totalFrames, seed);
+  else if (filterName === "fireworks") drawFilterFireworks(ctx, w, h, frameIndex, totalFrames, seed);
+}
+
+/* ---------------- MAGIC LAYER: title and end cards (export only) ----------------
+   Big wobbly hand-feel lettering, drawn letter by letter so the reveal is a
+   real rainbow wipe (each new tick shows one more letter), not a CSS
+   animation, so it survives into the exported video. */
+function drawTitleCard(ctx, w, h, tick, totalTicks, name){
+  ctx.fillStyle = PALETTE.bloom;
+  ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = "rgba(255,255,255,0.18)";
+  ctx.fillRect(0, 0, w, h);
+  var text = String(name || "my film");
+  var revealFrac = Math.min(1, (tick + 1) / totalTicks);
+  var revealCount = Math.max(1, Math.ceil(text.length * revealFrac));
+  var fontSize = Math.floor(Math.min(w, h) * 0.11);
+  ctx.font = "bold " + fontSize + "px sans-serif";
+  var charW = fontSize * 0.62;
+  var startX = (w - charW * text.length) / 2;
+  var baseY = h / 2;
+  var rainbow = [PALETTE.bloomDeep, PALETTE.sun, PALETTE.leaf, PALETTE.water, PALETTE.bloom];
+  for (var i = 0; i < revealCount && i < text.length; i++){
+    var wob = Math.sin(i * 1.7 + tick * 0.4) * fontSize * 0.06;
+    ctx.fillStyle = rainbow[i % rainbow.length];
+    ctx.fillText(text.charAt(i), startX + i * charW, baseY + wob);
+  }
+}
+function drawEndCard(ctx, w, h, tick, totalTicks){
+  ctx.fillStyle = PALETTE.bloomDeep;
+  ctx.fillRect(0, 0, w, h);
+  var openFrac = Math.min(1, (tick + 1) / totalTicks);
+  var maxR = Math.min(w, h) * 0.55;
+  var ringCount = Math.max(1, Math.round(openFrac * 10));
+  for (var i = 0; i < ringCount; i++){
+    var ang = (Math.PI * 2 / 10) * i;
+    var r = maxR * openFrac;
+    var hx = w / 2 + Math.cos(ang) * r * 0.5;
+    var hy = h / 2 + Math.sin(ang) * r * 0.5;
+    ctx.save();
+    ctx.translate(hx, hy);
+    ctx.scale(0.6, 0.6);
+    drawHeartShape(ctx, 30, "rgba(255,255,255," + (0.15 + openFrac * 0.2).toFixed(2) + ")");
+    ctx.restore();
+  }
+  var half = Math.floor(totalTicks / 2);
+  if (tick >= half){
+    var alpha = Math.min(1, (tick - half + 1) / (totalTicks - half));
+    ctx.fillStyle = "rgba(255,255,255," + alpha.toFixed(2) + ")";
+    var fontSize = Math.floor(Math.min(w, h) * 0.09);
+    ctx.font = "bold " + fontSize + "px sans-serif";
+    var text = "the end";
+    var charW = fontSize * 0.55;
+    var startX = (w - charW * text.length) / 2;
+    for (var c = 0; c < text.length; c++) ctx.fillText(text.charAt(c), startX + c * charW, h / 2);
+    drawSticker(ctx, "heart", w / 2, h / 2 + fontSize * 1.2, fontSize * 0.7, 7, tick);
+  }
+}
+
+/* one shared composite step: draws a single timeline entry (title card, end
+   card, or a photo with its stickers and spell) onto ctx. bitmapGetter(i)
+   must resolve the i-th photo's bitmap. Used by both encode paths so the
+   exported video is built from exactly the same pixels either would show. */
+function drawTimelineEntryToCanvas(ctx, entry, film, size, totalTicks, bitmapGetter){
+  ctx.clearRect(0, 0, size.w, size.h);
+  if (entry.segment === "title"){
+    drawTitleCard(ctx, size.w, size.h, entry.segmentTick, TITLE_TICKS, film.name);
+    return Promise.resolve();
+  }
+  if (entry.segment === "end"){
+    drawEndCard(ctx, size.w, size.h, entry.segmentTick, END_TICKS);
+    return Promise.resolve();
+  }
+  return bitmapGetter(entry.photoIndex).then(function(bmp){
+    ctx.drawImage(bmp, 0, 0, size.w, size.h);
+    (film.stickers || []).forEach(function(st){
+      drawSticker(ctx, st.sid, st.x * size.w, st.y * size.h, Math.min(size.w, size.h) * 0.12, st.seed, entry.frameIndex);
+    });
+    if (film.filter && film.filter !== "none"){
+      applyFilmFilter(ctx, film.filter, size.w, size.h, entry.frameIndex, totalTicks, filmSeed(film));
+    }
+  });
+}
+
+/* ---------------- MAGIC LAYER: per-film data ---------------- */
+function ensureFilmMagicFields(film){
+  if (!film) return film;
+  if (!film.stickers) film.stickers = [];
+  if (!film.filter) film.filter = "none";
+  if (typeof film.cardsOn !== "boolean") film.cardsOn = true;
+  return film;
+}
+function addSticker(sid, xFrac, yFrac){
+  var film = state.currentFilm;
+  if (!film) return null;
+  ensureFilmMagicFields(film);
+  if (film.stickers.length >= STICKER_CAP){
+    showHeartToast("the film is full of magic already");
+    return null;
+  }
+  var st = { id: uid(), sid: sid, seed: Math.floor(Math.random() * 1e9), x: clamp01(xFrac), y: clamp01(yFrac) };
+  film.stickers.push(st);
+  db.updateFilm(film);
+  return st;
+}
+function moveSticker(id, xFrac, yFrac){
+  var film = state.currentFilm;
+  if (!film || !film.stickers) return null;
+  var st = film.stickers.filter(function(s){ return s.id === id; })[0];
+  if (!st) return null;
+  st.x = clamp01(xFrac); st.y = clamp01(yFrac);
+  db.updateFilm(film);
+  return st;
+}
+function removeSticker(id){
+  var film = state.currentFilm;
+  if (!film || !film.stickers) return false;
+  var before = film.stickers.length;
+  film.stickers = film.stickers.filter(function(s){ return s.id !== id; });
+  var changed = film.stickers.length !== before;
+  if (changed) db.updateFilm(film);
+  return changed;
+}
+function setFilmFilter(name){
+  var film = state.currentFilm;
+  if (!film) return;
+  if (["none", "heartfall", "pinkout", "fireworks"].indexOf(name) === -1) return;
+  film.filter = name;
+  db.updateFilm(film);
+}
+function setCardsOn(on){
+  var film = state.currentFilm;
+  if (!film) return;
+  film.cardsOn = !!on;
+  db.updateFilm(film);
+}
+function renameFilm(filmId, newName){
+  return db.getFilm(filmId).then(function(film){
+    if (!film) return null;
+    var trimmed = String(newName || "").slice(0, 24).trim();
+    film.name = trimmed || film.name;
+    return db.updateFilm(film).then(function(){
+      if (state.currentFilm && state.currentFilm.id === film.id) state.currentFilm.name = film.name;
+      return film;
+    });
+  });
 }
 
 /* let the current task yield so a long encode loop never freezes the UI */
@@ -1115,21 +1835,24 @@ function encodeWithWebCodecs(frames, film, codecConfig, onProgress){
     bitrate: codecConfig.bitrate, framerate: FPS
   });
 
-  var tickUs = Math.round(1e6 / FPS);
+  var timeline = buildFilmTimeline(film, frames.length);
+  var bitmapCache = {};
+  function getBitmap(photoIndex){
+    if (bitmapCache[photoIndex]) return Promise.resolve(bitmapCache[photoIndex]);
+    return createImageBitmap(frames[photoIndex].blob).then(function(bmp){
+      bitmapCache[photoIndex] = bmp;
+      return bmp;
+    });
+  }
 
-  return frames.reduce(function(chain, frame, photoIndex){
+  return timeline.reduce(function(chain, entry){
     return chain.then(function(){
       if (encoderError) throw encoderError;
-      return createImageBitmap(frame.blob).then(function(bitmap){
-        ctx.drawImage(bitmap, 0, 0, size.w, size.h);
-        if (bitmap.close) bitmap.close();
-        for (var t = 0; t < HOLD_TICKS; t++){
-          var frameIndex = photoIndex * HOLD_TICKS + t;
-          var vf = new VideoFrame(canvas, { timestamp: frameIndex * tickUs, duration: tickUs });
-          encoder.encode(vf, { keyFrame: frameIndex === 0 });
-          vf.close();
-        }
-        if (onProgress) onProgress((photoIndex + 1) / frames.length);
+      return drawTimelineEntryToCanvas(ctx, entry, film, size, timeline.length, getBitmap).then(function(){
+        var vf = new VideoFrame(canvas, { timestamp: entry.timestamp, duration: entry.duration });
+        encoder.encode(vf, { keyFrame: entry.frameIndex === 0 });
+        vf.close();
+        if (onProgress) onProgress((entry.frameIndex + 1) / timeline.length);
         return nextTick();
       });
     });
@@ -1139,6 +1862,7 @@ function encodeWithWebCodecs(frames, film, codecConfig, onProgress){
     if (encoderError) throw encoderError;
     encoder.close();
     muxer.finalize();
+    Object.keys(bitmapCache).forEach(function(k){ if (bitmapCache[k].close) bitmapCache[k].close(); });
     return new Blob([target.buffer], { type: "video/mp4" });
   });
 }
@@ -1160,36 +1884,45 @@ function encodeWithMediaRecorder(frames, film, mimeType, onProgress){
   var canvas = document.createElement("canvas");
   canvas.width = size.w; canvas.height = size.h;
   var ctx = canvas.getContext("2d");
-
-  return Promise.all(frames.map(function(f){ return createImageBitmap(f.blob); })).then(function(bitmaps){
-    return new Promise(function(resolve, reject){
-      var stream = canvas.captureStream(FPS);
-      var recorder;
-      try {
-        recorder = new MediaRecorder(stream, { mimeType: mimeType });
-      } catch (e){ reject(e); return; }
-      var chunks = [];
-      recorder.ondataavailable = function(e){ if (e.data && e.data.size) chunks.push(e.data); };
-      recorder.onerror = function(e){ reject(e.error || e); };
-      recorder.onstop = function(){
-        bitmaps.forEach(function(b){ if (b.close) b.close(); });
-        resolve(new Blob(chunks, { type: mimeType.split(";")[0] }));
-      };
-      recorder.start();
-      var tickMs = 1000 / FPS;
-      var photoIndex = 0;
-      function drawNext(){
-        if (photoIndex >= bitmaps.length){
-          recorder.stop();
-          return;
-        }
-        ctx.drawImage(bitmaps[photoIndex], 0, 0, size.w, size.h);
-        if (onProgress) onProgress((photoIndex + 1) / bitmaps.length);
-        photoIndex++;
-        setTimeout(drawNext, tickMs * HOLD_TICKS);
-      }
-      drawNext();
+  var timeline = buildFilmTimeline(film, frames.length);
+  var bitmapCache = {};
+  function getBitmap(photoIndex){
+    if (bitmapCache[photoIndex]) return Promise.resolve(bitmapCache[photoIndex]);
+    return createImageBitmap(frames[photoIndex].blob).then(function(bmp){
+      bitmapCache[photoIndex] = bmp;
+      return bmp;
     });
+  }
+
+  return new Promise(function(resolve, reject){
+    var stream = canvas.captureStream(FPS);
+    var recorder;
+    try {
+      recorder = new MediaRecorder(stream, { mimeType: mimeType });
+    } catch (e){ reject(e); return; }
+    var chunks = [];
+    recorder.ondataavailable = function(e){ if (e.data && e.data.size) chunks.push(e.data); };
+    recorder.onerror = function(e){ reject(e.error || e); };
+    recorder.onstop = function(){
+      Object.keys(bitmapCache).forEach(function(k){ if (bitmapCache[k].close) bitmapCache[k].close(); });
+      resolve(new Blob(chunks, { type: mimeType.split(";")[0] }));
+    };
+    recorder.start();
+    var tickMs = 1000 / FPS;
+    var idx = 0;
+    function drawNext(){
+      if (idx >= timeline.length){
+        recorder.stop();
+        return;
+      }
+      var entry = timeline[idx];
+      drawTimelineEntryToCanvas(ctx, entry, film, size, timeline.length, getBitmap).then(function(){
+        if (onProgress) onProgress((idx + 1) / timeline.length);
+        idx++;
+        setTimeout(drawNext, tickMs);
+      });
+    }
+    drawNext();
   });
 }
 
@@ -1416,11 +2149,33 @@ window.KLIPP = {
   pickVideoCodec: pickVideoCodec,
   pickRecorderMimeType: pickRecorderMimeType,
   renderShelf: renderShelf,
-  isDemo: DEMO
+  isDemo: DEMO,
+  /* magic layer */
+  buildFilmTimeline: buildFilmTimeline,
+  filmTimelineOpts: filmTimelineOpts,
+  stickerVariation: stickerVariation,
+  klippRand: klippRand,
+  addSticker: addSticker,
+  moveSticker: moveSticker,
+  removeSticker: removeSticker,
+  setFilmFilter: setFilmFilter,
+  setCardsOn: setCardsOn,
+  renameFilm: renameFilm,
+  STICKER_CAP: STICKER_CAP,
+  STICKER_KINDS: STICKER_KINDS,
+  TITLE_TICKS: TITLE_TICKS,
+  END_TICKS: END_TICKS,
+  FIREWORKS_HOLD_TICKS: FIREWORKS_HOLD_TICKS
 };
 
 /* ---------------- BOOT ---------------- */
 renderShelf();
+
+if ("serviceWorker" in navigator){
+  window.addEventListener("load", function(){
+    navigator.serviceWorker.register("sw.js").catch(function(){ /* app still works with no worker */ });
+  });
+}
 
 })();
 </script>
