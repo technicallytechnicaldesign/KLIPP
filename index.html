@@ -1,0 +1,1158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>KLIPP</title>
+<style>
+  :root{
+    /* Little Jord register: bloom pink over soft paper, hearts as everyday currency */
+    --paper:#fdf6f8; --surface:#ffffff; --ink:#3a2b30; --ink-2:#7a6169;
+    --bloom:#e8a0bb; --bloom-2:#d97fa3; --bloom-deep:#c15c86;
+    --sun:#f0c96b; --leaf:#8fc7a3; --water:#8fbfd6;
+    --faint:#f3dbe4; --grid:#f0dbe3; --ring:rgba(193,92,134,0.25);
+    --good:#4caf7a; --warn:#d9a441; --crit:#d9636f;
+    --font-body:system-ui,-apple-system,"Segoe UI",sans-serif;
+    --font-round:system-ui,-apple-system,"Segoe UI",sans-serif;
+    --radius-lg:28px; --radius-md:18px; --radius-sm:12px;
+    --tap-min:64px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --paper:#241a1e; --surface:#2c2024; --ink:#f6ecf0; --ink-2:#cbb3bd;
+      --bloom:#e8a0bb; --bloom-2:#ec9ebe; --bloom-deep:#f2a9cc;
+      --sun:#e8c67a; --leaf:#8fd2ab; --water:#9ccbe0;
+      --faint:#3a2a30; --grid:#3a2a30; --ring:rgba(232,160,187,0.3);
+      --good:#6fcf9a; --warn:#e0b95a; --crit:#e88a92;
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#241a1e; --surface:#2c2024; --ink:#f6ecf0; --ink-2:#cbb3bd;
+    --bloom:#e8a0bb; --bloom-2:#ec9ebe; --bloom-deep:#f2a9cc;
+    --sun:#e8c67a; --leaf:#8fd2ab; --water:#9ccbe0;
+    --faint:#3a2a30; --grid:#3a2a30; --ring:rgba(232,160,187,0.3);
+    --good:#6fcf9a; --warn:#e0b95a; --crit:#e88a92;
+  }
+  :root[data-theme="light"]{
+    --paper:#fdf6f8; --surface:#ffffff; --ink:#3a2b30; --ink-2:#7a6169;
+    --bloom:#e8a0bb; --bloom-2:#d97fa3; --bloom-deep:#c15c86;
+    --sun:#f0c96b; --leaf:#8fc7a3; --water:#8fbfd6;
+    --faint:#f3dbe4; --grid:#f0dbe3; --ring:rgba(193,92,134,0.25);
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%}
+  body{
+    background:var(--paper);color:var(--ink);font-family:var(--font-body);
+    overflow:hidden;position:fixed;inset:0;
+    -webkit-user-select:none;user-select:none;
+    touch-action:manipulation;
+  }
+  button{font-family:inherit;color:inherit;border:none;background:none;cursor:pointer;touch-action:manipulation}
+  .view{position:fixed;inset:0;display:none;flex-direction:column;overflow:hidden}
+  .view.active{display:flex}
+
+  /* ---------- SHELF ---------- */
+  #view-shelf{padding:20px 18px 24px;overflow-y:auto}
+  .shelf-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 4px 18px}
+  .shelf-title{font-size:28px;font-weight:800;color:var(--bloom-deep);display:flex;align-items:center;gap:8px}
+  .shelf-title .heart{color:var(--bloom);font-size:22px}
+  #gear{
+    width:var(--tap-min);height:var(--tap-min);border-radius:50%;
+    display:flex;align-items:center;justify-content:center;font-size:24px;
+    color:var(--ink-2);background:var(--surface);border:2px solid var(--grid);
+    transition:transform .12s ease, box-shadow .12s ease;
+  }
+  #gear.holding{transform:scale(.88);box-shadow:0 0 0 6px var(--ring)}
+  .film-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:16px;padding-bottom:120px}
+  .film-card{
+    background:var(--surface);border-radius:var(--radius-md);overflow:hidden;
+    box-shadow:0 6px 18px rgba(193,92,134,0.14);border:2px solid var(--grid);
+    display:flex;flex-direction:column;text-align:left;min-height:var(--tap-min);
+  }
+  .film-card .poster{
+    width:100%;background:var(--faint);display:flex;align-items:center;justify-content:center;
+    color:var(--bloom); font-size:36px; overflow:hidden; position:relative;
+  }
+  .film-card .poster.portrait{aspect-ratio:9/16}
+  .film-card .poster.landscape{aspect-ratio:16/9}
+  .film-card .poster img{width:100%;height:100%;object-fit:cover;display:block}
+  .film-card .label{padding:10px 12px 12px}
+  .film-card .name{font-weight:700;font-size:15px;transform:rotate(-1deg);display:inline-block}
+  .film-card .count{font-size:12px;color:var(--ink-2);margin-top:2px}
+  .empty-shelf{padding:40px 10px;text-align:center;color:var(--ink-2)}
+  .empty-shelf .big{font-size:44px;margin-bottom:8px}
+  #new-film-btn{
+    position:fixed;left:18px;right:18px;bottom:22px;height:66px;
+    border-radius:var(--radius-lg);background:var(--bloom-deep);color:#fff;
+    font-size:19px;font-weight:800;box-shadow:0 10px 24px rgba(193,92,134,0.4);
+    display:flex;align-items:center;justify-content:center;gap:8px;z-index:20;
+  }
+  #new-film-btn:active{transform:scale(.97)}
+
+  /* ---------- NEW FILM SHEET ---------- */
+  #new-film-sheet{
+    position:fixed;inset:0;background:rgba(58,43,48,0.45);display:none;
+    align-items:flex-end;justify-content:center;z-index:60;
+  }
+  #new-film-sheet.open{display:flex}
+  .sheet-body{
+    background:var(--surface);width:100%;max-width:520px;border-radius:28px 28px 0 0;
+    padding:22px 20px 34px;box-shadow:0 -10px 30px rgba(0,0,0,0.2);
+  }
+  .sheet-title{font-size:20px;font-weight:800;text-align:center;margin-bottom:18px;color:var(--ink)}
+  .orient-row{display:flex;gap:14px}
+  .orient-btn{
+    flex:1;min-height:150px;border-radius:var(--radius-md);background:var(--faint);
+    border:2px solid var(--grid);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;
+    font-weight:800;font-size:15px;color:var(--ink);
+  }
+  .orient-btn:active{background:var(--bloom);color:#fff}
+  .orient-shape{border:3px solid var(--bloom-deep);border-radius:8px;background:var(--surface)}
+  .orient-shape.tall{width:44px;height:74px}
+  .orient-shape.wide{width:74px;height:44px}
+  .sheet-cancel{display:block;margin:18px auto 0;color:var(--ink-2);font-size:14px;padding:10px 20px;min-height:44px}
+
+  /* ---------- STUDIO ---------- */
+  #view-studio{background:#000}
+  .stage-wrap{position:relative;flex:1;overflow:hidden;background:#111}
+  #camera-video, #demo-canvas, #capture-canvas{
+    position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;
+  }
+  #capture-canvas{display:none}
+  #onion-img{
+    position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
+    opacity:0.35;pointer-events:none;display:none;
+  }
+  #onion-img.show{display:block}
+  #stage-flash{
+    position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;
+  }
+  #stage-flash.flashing{animation:klipp-flash .28s ease-out}
+  @keyframes klipp-flash{0%{opacity:.85}100%{opacity:0}}
+  #camera-msg{
+    position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;
+    gap:14px;color:#fff;text-align:center;padding:30px;background:rgba(20,10,14,0.7);z-index:5;
+  }
+  #camera-msg.show{display:flex}
+  #camera-msg .sad{font-size:40px}
+  #retry-camera{
+    min-height:var(--tap-min);padding:0 26px;border-radius:20px;background:var(--bloom-deep);color:#fff;
+    font-weight:800;font-size:16px;
+  }
+
+  .studio-topbar{
+    position:absolute;top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:flex-start;
+    padding:14px;z-index:10;pointer-events:none;
+  }
+  .studio-topbar > *{pointer-events:auto}
+  .round-btn{
+    width:var(--tap-min);height:var(--tap-min);border-radius:50%;background:rgba(255,255,255,0.9);
+    display:flex;align-items:center;justify-content:center;font-size:22px;color:var(--ink);
+    box-shadow:0 4px 12px rgba(0,0,0,0.25);
+  }
+  .round-btn.active{background:var(--bloom-deep);color:#fff}
+  .top-right-btns{display:flex;gap:10px}
+
+  .filmstrip-wrap{
+    position:absolute; z-index:8; background:rgba(0,0,0,0.35); backdrop-filter:blur(2px);
+  }
+  #filmstrip{display:flex;gap:8px;overflow-x:auto;overflow-y:hidden;padding:8px}
+  .fs-frame{
+    flex:0 0 auto;width:52px;height:52px;border-radius:10px;overflow:hidden;border:2px solid rgba(255,255,255,0.6);
+  }
+  .fs-frame img{width:100%;height:100%;object-fit:cover;display:block}
+
+  .bottom-bar{
+    position:absolute;left:0;right:0;bottom:0;z-index:10;display:flex;align-items:center;justify-content:center;
+    padding:18px 16px calc(18px + env(safe-area-inset-bottom,0px));gap:18px;
+  }
+  #shutter-wrap{position:relative;display:flex;align-items:center;justify-content:center}
+  #shutter{
+    width:92px;height:92px;border-radius:50%;background:var(--bloom-deep);
+    box-shadow:0 8px 22px rgba(193,92,134,0.5), inset 0 0 0 6px rgba(255,255,255,0.5);
+  }
+  #shutter:active{transform:scale(.94)}
+  .heart-burst{position:absolute;inset:-40px;pointer-events:none}
+  .heart-pop{
+    position:absolute;left:50%;top:50%;font-size:20px;color:var(--bloom);
+    animation:klipp-heart-pop .8s ease-out forwards;
+  }
+  @keyframes klipp-heart-pop{
+    0%{transform:translate(-50%,-50%) scale(.4);opacity:1}
+    100%{transform:translate(var(--dx,0),calc(var(--dy,-60px) - 20px)) scale(1.1);opacity:0}
+  }
+  .side-btn{
+    width:56px;height:56px;border-radius:50%;background:rgba(255,255,255,0.9);
+    display:flex;align-items:center;justify-content:center;font-size:22px;color:var(--ink);
+    box-shadow:0 4px 12px rgba(0,0,0,0.25);
+  }
+  .side-btn:disabled{opacity:.35}
+
+  /* ---------- UNDO TOAST ---------- */
+  #undo-toast{
+    position:fixed;left:16px;right:16px;bottom:calc(24px + env(safe-area-inset-bottom,0px));
+    background:var(--surface);color:var(--ink);border-radius:20px;padding:14px 16px;
+    display:none;align-items:center;justify-content:space-between;gap:12px;z-index:80;
+    box-shadow:0 10px 24px rgba(0,0,0,0.25);
+  }
+  #undo-toast.show{display:flex}
+  #undo-toast .msg{font-size:14px;font-weight:600}
+  #undo-toast button{
+    background:var(--bloom-deep);color:#fff;border-radius:14px;padding:10px 16px;font-weight:800;font-size:14px;min-height:44px;
+  }
+
+  /* ---------- GENERIC TOAST ---------- */
+  #heart-toast{
+    position:fixed;left:50%;top:26px;transform:translateX(-50%);
+    background:var(--bloom-deep);color:#fff;padding:12px 20px;border-radius:20px;font-weight:700;font-size:14px;
+    z-index:90;display:none;box-shadow:0 8px 20px rgba(0,0,0,0.25);text-align:center;max-width:80vw;
+  }
+  #heart-toast.show{display:block}
+
+  /* ---------- PLAYBACK ---------- */
+  #view-playback{background:#000}
+  .playback-stage{position:relative;flex:1;overflow:hidden;background:#111;display:flex;align-items:center;justify-content:center}
+  #playback-canvas{max-width:100%;max-height:100%;display:block}
+  #playback-hearts{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+  .pb-heart{
+    position:absolute;bottom:-20px;color:var(--bloom);font-size:22px;
+    animation:klipp-drift 3.2s linear forwards;
+  }
+  @keyframes klipp-drift{
+    0%{transform:translateY(0) translateX(0);opacity:1}
+    100%{transform:translateY(-110vh) translateX(var(--dx2,20px));opacity:0}
+  }
+  .playback-bottom{
+    position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;gap:18px;
+    padding:18px 16px calc(18px + env(safe-area-inset-bottom,0px));
+  }
+  .playback-top{position:absolute;top:0;left:0;right:0;display:flex;justify-content:space-between;padding:14px}
+  #replay-btn{
+    width:80px;height:80px;border-radius:50%;background:var(--bloom-deep);color:#fff;font-size:30px;
+    display:flex;align-items:center;justify-content:center;box-shadow:0 8px 22px rgba(193,92,134,0.5);
+  }
+  .empty-film-msg{color:#fff;text-align:center;padding:30px}
+
+  /* ---------- GROWN-UP CORNER ---------- */
+  #grownup-drawer{
+    position:fixed;inset:0;background:rgba(0,0,0,0.4);display:none;align-items:flex-end;justify-content:center;z-index:70;
+  }
+  #grownup-drawer.open{display:flex}
+  .drawer-body{
+    background:var(--surface);width:100%;max-width:520px;border-radius:24px 24px 0 0;padding:22px 20px 30px;
+    max-height:82vh;overflow-y:auto;
+  }
+  .drawer-title{font-size:18px;font-weight:800;margin-bottom:4px}
+  .drawer-sub{font-size:13px;color:var(--ink-2);margin-bottom:16px}
+  .drawer-row{
+    display:flex;align-items:center;justify-content:space-between;padding:14px 4px;border-bottom:1px solid var(--grid);
+    min-height:var(--tap-min);
+  }
+  .drawer-row:last-of-type{border-bottom:none}
+  .switch{
+    width:50px;height:30px;border-radius:16px;background:var(--grid);position:relative;transition:background .15s;
+  }
+  .switch.on{background:var(--bloom-deep)}
+  .switch .knob{position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:#fff;transition:left .15s}
+  .switch.on .knob{left:23px}
+  .film-pick-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 4px}
+  .film-pick-name{font-size:14px}
+  .delete-btn{
+    background:var(--crit);color:#fff;border-radius:14px;padding:10px 14px;font-size:13px;font-weight:700;min-height:44px;
+  }
+  .drawer-close{
+    display:block;margin:16px auto 0;color:var(--ink-2);font-size:14px;padding:10px 20px;min-height:44px;
+  }
+  #confirm-delete{
+    position:fixed;inset:0;background:rgba(0,0,0,0.5);display:none;align-items:center;justify-content:center;z-index:85;padding:20px;
+  }
+  #confirm-delete.open{display:flex}
+  .confirm-card{
+    background:var(--surface);border-radius:20px;padding:22px;max-width:340px;text-align:center;
+  }
+  .confirm-card p{margin:10px 0 18px;color:var(--ink-2);font-size:14px}
+  .confirm-actions{display:flex;gap:10px}
+  .confirm-actions button{flex:1;min-height:52px;border-radius:16px;font-weight:800;font-size:14px}
+  #confirm-yes{background:var(--crit);color:#fff}
+  #confirm-no{background:var(--faint);color:var(--ink)}
+
+  /* ---------- EXPORT PROGRESS OVERLAY (seam for future brief) ---------- */
+  #export-overlay{
+    position:fixed;inset:0;background:rgba(0,0,0,0.55);display:none;align-items:center;justify-content:center;z-index:95;
+  }
+  #export-overlay.show{display:flex}
+  .export-card{background:var(--surface);border-radius:20px;padding:26px;text-align:center;min-width:220px}
+  .export-card .bar{height:10px;border-radius:6px;background:var(--faint);margin-top:14px;overflow:hidden}
+  .export-card .bar-fill{height:100%;width:0%;background:var(--bloom-deep);transition:width .2s}
+
+  .send-btn{
+    width:56px;height:56px;border-radius:50%;background:rgba(255,255,255,0.9);
+    display:flex;align-items:center;justify-content:center;font-size:20px;color:var(--ink);
+    box-shadow:0 4px 12px rgba(0,0,0,0.25);
+  }
+</style>
+</head>
+<body>
+
+<!-- ============ SHELF ============ -->
+<div id="view-shelf" class="view active">
+  <div class="shelf-head">
+    <div class="shelf-title">Klipp <span class="heart">&hearts;</span></div>
+    <button id="gear" type="button" aria-label="grown up corner">&#9881;</button>
+  </div>
+  <div id="film-grid" class="film-grid"></div>
+  <button id="new-film-btn" type="button">&#43; new film</button>
+</div>
+
+<!-- new film picker sheet -->
+<div id="new-film-sheet">
+  <div class="sheet-body">
+    <div class="sheet-title">tall or wide?</div>
+    <div class="orient-row">
+      <button class="orient-btn" id="pick-portrait" type="button">
+        <span class="orient-shape tall"></span>
+        <span>tall</span>
+      </button>
+      <button class="orient-btn" id="pick-landscape" type="button">
+        <span class="orient-shape wide"></span>
+        <span>wide</span>
+      </button>
+    </div>
+    <button class="sheet-cancel" id="cancel-new-film" type="button">never mind</button>
+  </div>
+</div>
+
+<!-- ============ STUDIO ============ -->
+<div id="view-studio" class="view">
+  <div class="stage-wrap">
+    <video id="camera-video" autoplay playsinline muted></video>
+    <canvas id="demo-canvas" width="1280" height="720" style="display:none"></canvas>
+    <img id="onion-img" alt="">
+    <div id="stage-flash"></div>
+    <div id="camera-msg">
+      <div class="sad">&#128546;</div>
+      <div id="camera-msg-text">we could not see the camera. can a grown up help?</div>
+      <button id="retry-camera" type="button">try again</button>
+    </div>
+    <div class="studio-topbar">
+      <button class="round-btn" id="back-to-shelf" type="button" aria-label="back to shelf">&#8592;</button>
+      <div class="top-right-btns">
+        <button class="round-btn" id="ghost-toggle" type="button" aria-label="ghost toggle">&#128123;</button>
+        <button class="send-btn" id="send-btn-studio" type="button" aria-label="send film">&#128233;</button>
+      </div>
+    </div>
+    <div class="filmstrip-wrap" id="filmstrip-wrap">
+      <div id="filmstrip"></div>
+    </div>
+    <div class="bottom-bar">
+      <button class="side-btn" id="undo-btn" type="button" aria-label="undo last frame">&#8617;</button>
+      <div id="shutter-wrap">
+        <button id="shutter" type="button" aria-label="take a picture"></button>
+        <div class="heart-burst" id="heart-burst"></div>
+      </div>
+      <button class="side-btn" id="play-btn" type="button" aria-label="play film">&#9654;</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ PLAYBACK ============ -->
+<div id="view-playback" class="view">
+  <div class="playback-stage">
+    <canvas id="playback-canvas" width="720" height="1280"></canvas>
+    <div id="playback-hearts"></div>
+    <div class="playback-top">
+      <button class="round-btn" id="playback-back" type="button" aria-label="back to studio">&#8592;</button>
+      <button class="send-btn" id="send-btn-playback" type="button" aria-label="send film">&#128233;</button>
+    </div>
+  </div>
+  <div class="playback-bottom">
+    <button id="replay-btn" type="button" aria-label="play again">&#9654;</button>
+  </div>
+</div>
+
+<!-- undo toast -->
+<div id="undo-toast">
+  <span class="msg">oops, bring it back?</span>
+  <button id="undo-restore-btn" type="button">bring it back</button>
+</div>
+
+<!-- generic heart toast -->
+<div id="heart-toast"></div>
+
+<!-- grown up drawer -->
+<div id="grownup-drawer">
+  <div class="drawer-body">
+    <div class="drawer-title">grown up corner</div>
+    <div class="drawer-sub">quiet settings, nothing a small helper needs to touch.</div>
+    <div class="drawer-row">
+      <span>ghost frame on by default</span>
+      <button class="switch" id="onion-default-switch" type="button" aria-label="onion skin default"><span class="knob"></span></button>
+    </div>
+    <div id="drawer-film-list"></div>
+    <button class="drawer-close" id="close-drawer" type="button">close</button>
+  </div>
+</div>
+
+<!-- delete confirm 1 -->
+<div id="confirm-delete">
+  <div class="confirm-card">
+    <div style="font-weight:800;font-size:16px">delete this film?</div>
+    <p id="confirm-delete-name">every frame in it goes away for good.</p>
+    <div class="confirm-actions">
+      <button id="confirm-no" type="button">keep it</button>
+      <button id="confirm-yes" type="button">delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- export progress overlay: seam for the export pipeline brief -->
+<div id="export-overlay">
+  <div class="export-card">
+    <div id="export-overlay-text">sending your film...</div>
+    <div class="bar"><div class="bar-fill" id="export-overlay-bar"></div></div>
+  </div>
+</div>
+
+<script>
+/* ==========================================================
+   KLIPP v0. One file, no dependencies, no network, no accounts.
+   Rules: no em dashes anywhere, warm plain copy, kid proof taps.
+   ========================================================== */
+(function(){
+"use strict";
+
+var DEMO = /[?&]demo=1\b/.test(location.search);
+
+/* ---------------- tiny helpers ---------------- */
+function $(id){ return document.getElementById(id); }
+function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
+function showView(name){
+  var views = document.querySelectorAll(".view");
+  for (var i=0;i<views.length;i++) views[i].classList.remove("active");
+  $("view-"+name).classList.add("active");
+}
+
+/* ---------------- IndexedDB layer ---------------- */
+var DB_NAME = "klipp", DB_VERSION = 1;
+var dbPromise = null;
+
+function openDB(){
+  if (dbPromise) return dbPromise;
+  dbPromise = new Promise(function(resolve, reject){
+    var req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = function(e){
+      var db = e.target.result;
+      if (!db.objectStoreNames.contains("films")){
+        db.createObjectStore("films", { keyPath: "id" });
+      }
+      if (!db.objectStoreNames.contains("frames")){
+        var fs = db.createObjectStore("frames", { keyPath: "key" });
+        fs.createIndex("byFilm", "filmId", { unique: false });
+      }
+    };
+    req.onsuccess = function(e){ resolve(e.target.result); };
+    req.onerror = function(e){ reject(e.target.error); };
+  });
+  return dbPromise;
+}
+
+function tx(storeNames, mode){
+  return openDB().then(function(db){ return db.transaction(storeNames, mode); });
+}
+
+function dbPut(storeName, value){
+  return tx([storeName], "readwrite").then(function(t){
+    return new Promise(function(resolve, reject){
+      var r = t.objectStore(storeName).put(value);
+      r.onsuccess = function(){ resolve(value); };
+      r.onerror = function(e){ reject(e.target.error); };
+    });
+  });
+}
+function dbGet(storeName, key){
+  return tx([storeName], "readonly").then(function(t){
+    return new Promise(function(resolve, reject){
+      var r = t.objectStore(storeName).get(key);
+      r.onsuccess = function(){ resolve(r.result); };
+      r.onerror = function(e){ reject(e.target.error); };
+    });
+  });
+}
+function dbGetAll(storeName){
+  return tx([storeName], "readonly").then(function(t){
+    return new Promise(function(resolve, reject){
+      var r = t.objectStore(storeName).getAll();
+      r.onsuccess = function(){ resolve(r.result || []); };
+      r.onerror = function(e){ reject(e.target.error); };
+    });
+  });
+}
+function dbDelete(storeName, key){
+  return tx([storeName], "readwrite").then(function(t){
+    return new Promise(function(resolve, reject){
+      var r = t.objectStore(storeName).delete(key);
+      r.onsuccess = function(){ resolve(); };
+      r.onerror = function(e){ reject(e.target.error); };
+    });
+  });
+}
+function framesForFilm(filmId){
+  return tx(["frames"], "readonly").then(function(t){
+    return new Promise(function(resolve, reject){
+      var idx = t.objectStore("frames").index("byFilm");
+      var req = idx.getAll(IDBKeyRange.only(filmId));
+      req.onsuccess = function(){
+        var list = req.result || [];
+        list.sort(function(a,b){ return a.index - b.index; });
+        resolve(list);
+      };
+      req.onerror = function(e){ reject(e.target.error); };
+    });
+  });
+}
+
+var db = {
+  openDB: openDB,
+  addFilm: function(orientation){
+    var film = {
+      id: uid(),
+      name: "",
+      orientation: orientation,
+      createdAt: Date.now(),
+      frameCount: 0
+    };
+    return dbPut("films", film).then(function(){ return film; });
+  },
+  getFilms: function(){ return dbGetAll("films"); },
+  getFilm: function(id){ return dbGet("films", id); },
+  updateFilm: function(film){ return dbPut("films", film); },
+  deleteFilm: function(id){
+    return framesForFilm(id).then(function(frames){
+      var p = Promise.resolve();
+      frames.forEach(function(f){
+        p = p.then(function(){ return dbDelete("frames", f.key); });
+      });
+      return p;
+    }).then(function(){ return dbDelete("films", id); });
+  },
+  addFrame: function(filmId, index, blob){
+    var frame = { key: filmId + "_" + index, filmId: filmId, index: index, blob: blob };
+    return dbPut("frames", frame).then(function(){ return frame; });
+  },
+  deleteFrame: function(filmId, index){
+    return dbDelete("frames", filmId + "_" + index);
+  },
+  getFrames: framesForFilm
+};
+
+/* ---------------- naming ---------------- */
+function nextFilmName(existingNames){
+  var n = 1;
+  while (existingNames.indexOf("Film " + n) !== -1) n++;
+  return "Film " + n;
+}
+
+/* ---------------- app state ---------------- */
+var state = {
+  view: "shelf",
+  films: [],
+  currentFilm: null,
+  frames: [],          /* [{key,filmId,index,blob,url}] for the open film */
+  onionSkinOn: true,   /* per-session toggle, seeded from grown up default */
+  onionSkinDefault: true,
+  stream: null,
+  demoRunning: false,
+  playing: false,
+  lastCaptureAt: 0,
+  undoBuffer: null,    /* {frame, timeoutId} */
+  gearHeld: false
+};
+
+var SETTINGS_KEY = "klipp_onion_default";
+try {
+  var savedDefault = localStorage.getItem(SETTINGS_KEY);
+  if (savedDefault !== null) state.onionSkinDefault = savedDefault === "1";
+} catch (e) { /* private mode or blocked storage: keep the built in default */ }
+state.onionSkinOn = state.onionSkinDefault;
+
+function saveOnionDefault(on){
+  state.onionSkinDefault = on;
+  try { localStorage.setItem(SETTINGS_KEY, on ? "1" : "0"); } catch (e) {}
+}
+
+/* ---------------- toasts ---------------- */
+var heartToastTimer = null;
+function showHeartToast(msg, ms){
+  var el = $("heart-toast");
+  el.textContent = msg;
+  el.classList.add("show");
+  clearTimeout(heartToastTimer);
+  heartToastTimer = setTimeout(function(){ el.classList.remove("show"); }, ms || 2200);
+}
+
+/* ---------------- SHELF ---------------- */
+function renderShelf(){
+  return db.getFilms().then(function(films){
+    films.sort(function(a,b){ return b.createdAt - a.createdAt; });
+    state.films = films;
+    var grid = $("film-grid");
+    grid.innerHTML = "";
+    if (!films.length){
+      var empty = document.createElement("div");
+      empty.className = "empty-shelf";
+      empty.innerHTML = '<div class="big">&#127909;</div><div>no films yet. tap the big pink button to start one.</div>';
+      grid.appendChild(empty);
+      return;
+    }
+    var frag = document.createDocumentFragment();
+    films.forEach(function(film){
+      var card = document.createElement("button");
+      card.type = "button";
+      card.className = "film-card";
+      card.setAttribute("data-film-id", film.id);
+      var posterClass = film.orientation === "portrait" ? "portrait" : "landscape";
+      card.innerHTML =
+        '<div class="poster ' + posterClass + '" data-poster="' + film.id + '">&#127909;</div>' +
+        '<div class="label"><div class="name">' + escapeHtml(film.name || "Film") + ' &hearts;</div>' +
+        '<div class="count">' + (film.frameCount||0) + ' frame' + (film.frameCount===1?"":"s") + '</div></div>';
+      card.addEventListener("click", function(){ openFilm(film.id); });
+      frag.appendChild(card);
+    });
+    grid.appendChild(frag);
+    /* fill posters async with the first frame */
+    films.forEach(function(film){
+      if (!film.frameCount) return;
+      db.getFrames(film.id).then(function(frames){
+        if (!frames.length) return;
+        var url = URL.createObjectURL(frames[0].blob);
+        var posterEl = grid.querySelector('[data-poster="' + film.id + '"]');
+        if (posterEl) posterEl.innerHTML = '<img src="' + url + '" alt="">';
+      });
+    });
+  });
+}
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, function(c){
+    return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c];
+  });
+}
+
+/* ---------------- NEW FILM FLOW ---------------- */
+$("new-film-btn").addEventListener("click", function(){
+  $("new-film-sheet").classList.add("open");
+});
+$("cancel-new-film").addEventListener("click", function(){
+  $("new-film-sheet").classList.remove("open");
+});
+$("pick-portrait").addEventListener("click", function(){ newFilm("portrait"); });
+$("pick-landscape").addEventListener("click", function(){ newFilm("landscape"); });
+
+function newFilm(orientation){
+  $("new-film-sheet").classList.remove("open");
+  return db.getFilms().then(function(films){
+    var names = films.map(function(f){ return f.name; });
+    return db.addFilm(orientation).then(function(film){
+      film.name = nextFilmName(names);
+      return db.updateFilm(film).then(function(){ return film; });
+    });
+  }).then(function(film){
+    return openFilm(film.id);
+  });
+}
+
+/* ---------------- STUDIO ---------------- */
+function openFilm(filmId){
+  return db.getFilm(filmId).then(function(film){
+    state.currentFilm = film;
+    state.onionSkinOn = state.onionSkinDefault;
+    return db.getFrames(filmId);
+  }).then(function(frames){
+    frames.forEach(function(f){ f.url = URL.createObjectURL(f.blob); });
+    state.frames = frames;
+    state.view = "studio";
+    showView("studio");
+    renderFilmstrip();
+    updateOnionSkin();
+    updateUndoAvailability();
+    startCameraOrDemo();
+  });
+}
+
+function renderFilmstrip(){
+  var strip = $("filmstrip");
+  strip.innerHTML = "";
+  var frag = document.createDocumentFragment();
+  state.frames.forEach(function(f){
+    var wrap = document.createElement("div");
+    wrap.className = "fs-frame";
+    var img = document.createElement("img");
+    img.src = f.url;
+    img.alt = "";
+    wrap.appendChild(img);
+    frag.appendChild(wrap);
+  });
+  strip.appendChild(frag);
+  strip.scrollLeft = strip.scrollWidth;
+}
+
+function updateOnionSkin(){
+  var img = $("onion-img");
+  var btn = $("ghost-toggle");
+  btn.classList.toggle("active", state.onionSkinOn);
+  var last = state.frames[state.frames.length - 1];
+  if (state.onionSkinOn && last){
+    img.src = last.url;
+    img.classList.add("show");
+  } else {
+    img.classList.remove("show");
+  }
+}
+$("ghost-toggle").addEventListener("click", function(){
+  state.onionSkinOn = !state.onionSkinOn;
+  updateOnionSkin();
+});
+
+$("back-to-shelf").addEventListener("click", function(){ backToShelf(); });
+function backToShelf(){
+  stopCamera();
+  state.currentFilm = null;
+  state.view = "shelf";
+  showView("shelf");
+  renderShelf();
+}
+
+/* ---------------- CAMERA / DEMO SOURCE ---------------- */
+var demoRAF = null;
+function startCameraOrDemo(){
+  $("camera-msg").classList.remove("show");
+  if (DEMO){
+    startDemoPattern();
+    return;
+  }
+  stopDemoPattern();
+  $("demo-canvas").style.display = "none";
+  $("camera-video").style.display = "block";
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    showCameraError("this browser cannot open a camera here.");
+    return;
+  }
+  navigator.mediaDevices.getUserMedia({
+    video: { facingMode: { ideal: "environment" } },
+    audio: false
+  }).then(function(stream){
+    state.stream = stream;
+    var video = $("camera-video");
+    video.srcObject = stream;
+  }).catch(function(){
+    showCameraError("we could not see the camera. can a grown up help?");
+  });
+}
+function showCameraError(msg){
+  $("camera-msg-text").textContent = msg;
+  $("camera-msg").classList.add("show");
+}
+$("retry-camera").addEventListener("click", function(){ startCameraOrDemo(); });
+
+function stopCamera(){
+  if (state.stream){
+    state.stream.getTracks().forEach(function(t){ t.stop(); });
+    state.stream = null;
+  }
+  stopDemoPattern();
+}
+
+function startDemoPattern(){
+  $("camera-video").style.display = "none";
+  var canvas = $("demo-canvas");
+  canvas.style.display = "block";
+  var ctx = canvas.getContext("2d");
+  var t0 = performance.now();
+  state.demoRunning = true;
+  function frame(now){
+    if (!state.demoRunning) return;
+    var t = (now - t0) / 1000;
+    ctx.fillStyle = "#2c2024";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    var hue = (t * 40) % 360;
+    ctx.fillStyle = "hsl(" + hue + ", 70%, 70%)";
+    var x = (Math.sin(t) * 0.5 + 0.5) * (canvas.width - 160) + 80;
+    var y = (Math.cos(t * 0.7) * 0.5 + 0.5) * (canvas.height - 160) + 80;
+    ctx.beginPath();
+    ctx.arc(x, y, 70, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#fff";
+    ctx.font = "28px sans-serif";
+    ctx.fillText("demo pattern", 24, 44);
+    demoRAF = requestAnimationFrame(frame);
+  }
+  demoRAF = requestAnimationFrame(frame);
+}
+function stopDemoPattern(){
+  state.demoRunning = false;
+  if (demoRAF) cancelAnimationFrame(demoRAF);
+  demoRAF = null;
+}
+
+/* ---------------- CAPTURE ---------------- */
+var CAPTURE_DEBOUNCE_MS = 350;
+
+function getSource(){
+  if (DEMO) return { el: $("demo-canvas"), w: $("demo-canvas").width, h: $("demo-canvas").height };
+  var v = $("camera-video");
+  return { el: v, w: v.videoWidth || 1280, h: v.videoHeight || 720 };
+}
+
+function targetSize(orientation){
+  return orientation === "portrait" ? { w: 720, h: 1280 } : { w: 1280, h: 720 };
+}
+
+/* center crop source into a canvas sized to the film's orientation */
+function cropDrawToCanvas(sourceEl, sw, sh, targetW, targetH){
+  var canvas = document.createElement("canvas");
+  canvas.width = targetW;
+  canvas.height = targetH;
+  var ctx = canvas.getContext("2d");
+  var targetAspect = targetW / targetH;
+  var sourceAspect = sw / sh;
+  var cropW, cropH, cropX, cropY;
+  if (sourceAspect > targetAspect){
+    cropH = sh;
+    cropW = sh * targetAspect;
+    cropX = (sw - cropW) / 2;
+    cropY = 0;
+  } else {
+    cropW = sw;
+    cropH = sw / targetAspect;
+    cropX = 0;
+    cropY = (sh - cropH) / 2;
+  }
+  ctx.drawImage(sourceEl, cropX, cropY, cropW, cropH, 0, 0, targetW, targetH);
+  return canvas;
+}
+
+function captureFrame(){
+  if (!state.currentFilm) return Promise.resolve(null);
+  var now = Date.now();
+  if (now - state.lastCaptureAt < CAPTURE_DEBOUNCE_MS) return Promise.resolve(null);
+  state.lastCaptureAt = now;
+  var src = getSource();
+  var size = targetSize(state.currentFilm.orientation);
+  var canvas = cropDrawToCanvas(src.el, src.w, src.h, size.w, size.h);
+  flashStage();
+  heartBurst();
+  return captureFrameFromCanvas(canvas);
+}
+
+/* test hook: takes any canvas already sized/cropped and stores it as the
+   next frame. Lets a headless harness drive the whole loop with no camera. */
+function captureFrameFromCanvas(canvas){
+  if (!state.currentFilm) return Promise.resolve(null);
+  var filmId = state.currentFilm.id;
+  var index = state.frames.length;
+  return new Promise(function(resolve){
+    canvas.toBlob(function(blob){
+      db.addFrame(filmId, index, blob).then(function(frame){
+        frame.url = URL.createObjectURL(blob);
+        state.frames.push(frame);
+        state.currentFilm.frameCount = state.frames.length;
+        db.updateFilm(state.currentFilm);
+        renderFilmstrip();
+        updateOnionSkin();
+        updateUndoAvailability();
+        resolve(frame);
+      });
+    }, "image/jpeg", 0.85);
+  });
+}
+
+$("shutter").addEventListener("click", function(){ captureFrame(); });
+
+function flashStage(){
+  var el = $("stage-flash");
+  el.classList.remove("flashing");
+  void el.offsetWidth;
+  el.classList.add("flashing");
+}
+function heartBurst(){
+  var wrap = $("heart-burst");
+  var count = 6;
+  for (var i=0;i<count;i++){
+    var h = document.createElement("div");
+    h.className = "heart-pop";
+    h.textContent = "♥";
+    var angle = (Math.PI * 2 * i) / count + Math.random() * 0.4;
+    var dist = 50 + Math.random() * 30;
+    h.style.setProperty("--dx", Math.cos(angle) * dist + "px");
+    h.style.setProperty("--dy", Math.sin(angle) * dist - 40 + "px");
+    wrap.appendChild(h);
+    (function(node){
+      setTimeout(function(){ node.remove(); }, 900);
+    })(h);
+  }
+}
+
+/* ---------------- UNDO / RESTORE ---------------- */
+var UNDO_WINDOW_MS = 5000;
+var undoTimer = null;
+
+function updateUndoAvailability(){
+  $("undo-btn").disabled = state.frames.length === 0;
+}
+
+function undoLast(){
+  if (!state.frames.length) return Promise.resolve(null);
+  var frame = state.frames.pop();
+  state.currentFilm.frameCount = state.frames.length;
+  return db.updateFilm(state.currentFilm).then(function(){
+    return db.deleteFrame(frame.filmId, frame.index);
+  }).then(function(){
+    state.undoBuffer = frame;
+    renderFilmstrip();
+    updateOnionSkin();
+    updateUndoAvailability();
+    showUndoToast();
+    return frame;
+  });
+}
+function showUndoToast(){
+  $("undo-toast").classList.add("show");
+  clearTimeout(undoTimer);
+  undoTimer = setTimeout(function(){
+    $("undo-toast").classList.remove("show");
+    state.undoBuffer = null;
+  }, UNDO_WINDOW_MS);
+}
+function restoreLast(){
+  var frame = state.undoBuffer;
+  if (!frame) return Promise.resolve(null);
+  clearTimeout(undoTimer);
+  $("undo-toast").classList.remove("show");
+  state.undoBuffer = null;
+  return db.addFrame(frame.filmId, frame.index, frame.blob).then(function(saved){
+    saved.url = frame.url || URL.createObjectURL(frame.blob);
+    state.frames.push(saved);
+    state.frames.sort(function(a,b){ return a.index - b.index; });
+    state.currentFilm.frameCount = state.frames.length;
+    return db.updateFilm(state.currentFilm);
+  }).then(function(){
+    renderFilmstrip();
+    updateOnionSkin();
+    updateUndoAvailability();
+    return frame;
+  });
+}
+$("undo-btn").addEventListener("click", undoLast);
+$("undo-restore-btn").addEventListener("click", restoreLast);
+
+/* ---------------- PLAYBACK ---------------- */
+var FPS = 12, HOLD_TICKS = 3; /* each photo held 3 ticks of a 12fps clock: 4 photos/sec */
+var playTimer = null, playIndex = 0, playTickCount = 0;
+var heartDriftTimer = null;
+
+function startPlayback(){
+  if (!state.currentFilm) return;
+  state.view = "playback";
+  showView("playback");
+  if (!state.frames.length){
+    var ctx = $("playback-canvas").getContext("2d");
+    ctx.clearRect(0,0,$("playback-canvas").width,$("playback-canvas").height);
+    showHeartToast("take a few pictures first, then play them back.");
+    return;
+  }
+  var size = targetSize(state.currentFilm.orientation);
+  var canvas = $("playback-canvas");
+  canvas.width = size.w;
+  canvas.height = size.h;
+  playIndex = 0;
+  playTickCount = 0;
+  state.playing = true;
+  drawPlaybackFrame(0);
+  clearInterval(playTimer);
+  playTimer = setInterval(playTick, 1000 / FPS);
+  clearInterval(heartDriftTimer);
+  heartDriftTimer = setInterval(spawnPlaybackHeart, 350);
+}
+function playTick(){
+  playTickCount++;
+  if (playTickCount >= HOLD_TICKS){
+    playTickCount = 0;
+    playIndex++;
+    if (playIndex >= state.frames.length){
+      playIndex = 0;
+    }
+    drawPlaybackFrame(playIndex);
+  }
+}
+function drawPlaybackFrame(i){
+  var frame = state.frames[i];
+  if (!frame) return;
+  var canvas = $("playback-canvas");
+  var ctx = canvas.getContext("2d");
+  var img = new Image();
+  img.onload = function(){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  };
+  img.src = frame.url;
+}
+function stopPlayback(){
+  state.playing = false;
+  clearInterval(playTimer);
+  clearInterval(heartDriftTimer);
+  playTimer = null;
+  heartDriftTimer = null;
+}
+function spawnPlaybackHeart(){
+  var wrap = $("playback-hearts");
+  var h = document.createElement("div");
+  h.className = "pb-heart";
+  h.textContent = "♥";
+  h.style.left = (10 + Math.random() * 80) + "%";
+  h.style.setProperty("--dx2", (Math.random() * 40 - 20) + "px");
+  wrap.appendChild(h);
+  setTimeout(function(){ h.remove(); }, 3300);
+}
+
+$("play-btn").addEventListener("click", function(){ startPlayback(); });
+$("replay-btn").addEventListener("click", function(){ startPlayback(); });
+$("playback-back").addEventListener("click", function(){
+  stopPlayback();
+  state.view = "studio";
+  showView("studio");
+});
+
+/* ---------------- EXPORT SEAM ---------------- */
+/* v0 stub. A second brief wires this to a real MP4 pipeline. The progress
+   overlay markup already exists in the DOM (#export-overlay) ready to use. */
+function exportFilm(filmId){
+  showHeartToast("sending is coming soon. hearts on the way anyway! ♥");
+  return Promise.resolve({ filmId: filmId, status: "not_implemented" });
+}
+$("send-btn-studio").addEventListener("click", function(){
+  exportFilm(state.currentFilm && state.currentFilm.id);
+});
+$("send-btn-playback").addEventListener("click", function(){
+  exportFilm(state.currentFilm && state.currentFilm.id);
+});
+
+/* ---------------- GROWN UP CORNER ----------------
+   the gear only opens on a genuine 650ms press and hold. Ported exactly from
+   JORD's little-jord gear: on a touchscreen pointercancel and pointerleave
+   fire routinely during a long press (text selection, the callout menu, the
+   browser guessing at a scroll), so only an early pointerup may cancel the
+   hold timer. Cancelling on cancel/leave leaves the button dead on a phone. */
+(function(){
+  var btn = $("gear"), HOLD_MS = 650;
+  var holdT = null, held = false, downAt = 0;
+  function openDrawer(){
+    renderGrownupDrawer();
+    $("grownup-drawer").classList.add("open");
+    btn.classList.remove("holding");
+    state.gearHeld = false;
+  }
+  btn.addEventListener("pointerdown", function(){
+    held = false; downAt = Date.now();
+    state.gearHeld = false;
+    btn.classList.add("holding");
+    clearTimeout(holdT);
+    holdT = setTimeout(function(){ held = true; state.gearHeld = true; openDrawer(); }, HOLD_MS);
+  });
+  btn.addEventListener("pointerup", function(){
+    clearTimeout(holdT); holdT = null;
+    btn.classList.remove("holding");
+    /* belt and braces: a press that lasted long enough still counts even if
+       its timer never got to fire */
+    if (!held && downAt && Date.now() - downAt >= HOLD_MS){ held = true; openDrawer(); }
+  });
+  /* deliberately NOT cancelling on pointercancel/pointerleave, see note above */
+  btn.addEventListener("contextmenu", function(e){ e.preventDefault(); });
+  btn.addEventListener("click", function(){
+    if (held){ held = false; return; }
+    showHeartToast("that one is for grown ups. press and hold it a moment.");
+  });
+})();
+
+function renderGrownupDrawer(){
+  var sw = $("onion-default-switch");
+  sw.classList.toggle("on", state.onionSkinDefault);
+  var list = $("drawer-film-list");
+  list.innerHTML = "";
+  db.getFilms().then(function(films){
+    films.sort(function(a,b){ return b.createdAt - a.createdAt; });
+    var frag = document.createDocumentFragment();
+    films.forEach(function(film){
+      var row = document.createElement("div");
+      row.className = "film-pick-row";
+      row.innerHTML =
+        '<span class="film-pick-name">' + escapeHtml(film.name || "Film") + '</span>';
+      var del = document.createElement("button");
+      del.className = "delete-btn";
+      del.type = "button";
+      del.textContent = "delete";
+      del.addEventListener("click", function(){ askDeleteFilm(film); });
+      row.appendChild(del);
+      frag.appendChild(row);
+    });
+    list.appendChild(frag);
+  });
+}
+$("onion-default-switch").addEventListener("click", function(){
+  var next = !state.onionSkinDefault;
+  saveOnionDefault(next);
+  renderGrownupDrawer();
+});
+$("close-drawer").addEventListener("click", function(){
+  $("grownup-drawer").classList.remove("open");
+});
+
+var pendingDeleteFilm = null;
+function askDeleteFilm(film){
+  pendingDeleteFilm = film;
+  $("confirm-delete-name").textContent = '"' + (film.name || "Film") + '" and every frame in it goes away for good.';
+  $("confirm-delete").classList.add("open");
+}
+$("confirm-no").addEventListener("click", function(){
+  pendingDeleteFilm = null;
+  $("confirm-delete").classList.remove("open");
+});
+$("confirm-yes").addEventListener("click", function(){
+  if (!pendingDeleteFilm) return;
+  var film = pendingDeleteFilm;
+  pendingDeleteFilm = null;
+  $("confirm-delete").classList.remove("open");
+  db.deleteFilm(film.id).then(function(){
+    if (state.currentFilm && state.currentFilm.id === film.id){
+      backToShelf();
+      $("grownup-drawer").classList.remove("open");
+    } else {
+      renderGrownupDrawer();
+    }
+    renderShelf();
+  });
+});
+
+/* ---------------- TEST HOOKS ---------------- */
+window.KLIPP = {
+  state: state,
+  captureFrameFromCanvas: captureFrameFromCanvas,
+  captureFrame: captureFrame,
+  db: db,
+  play: startPlayback,
+  pause: stopPlayback,
+  newFilm: newFilm,
+  undoLast: undoLast,
+  restoreLast: restoreLast,
+  openFilm: openFilm,
+  backToShelf: backToShelf,
+  exportFilm: exportFilm,
+  renderShelf: renderShelf,
+  isDemo: DEMO
+};
+
+/* ---------------- BOOT ---------------- */
+renderShelf();
+
+})();
+</script>
+</body>
+</html>
