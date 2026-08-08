@@ -4,7 +4,7 @@
    calls happen at all) just falls through to the network. Relative paths
    only, since Pages serves this from /KLIPP/. */
 
-var CACHE_NAME = "klipp-shell-v1";
+var CACHE_NAME = "klipp-shell-v2";
 var SHELL_FILES = [
   "./",
   "./index.html",
