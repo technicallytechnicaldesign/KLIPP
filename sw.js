@@ -2,9 +2,18 @@
 /* KLIPP service worker. Cache-first for the app shell so the studio still
    opens with no signal; everything else (never, in this app: no network
    calls happen at all) just falls through to the network. Relative paths
-   only, since Pages serves this from /KLIPP/. */
+   only, since Pages serves this from /KLIPP/.
 
-var CACHE_NAME = "klipp-shell-v2";
+   BUMP CACHE_NAME ON EVERY DEPLOY THAT TOUCHES index.html, EVEN IF THIS
+   FILE ITSELF DOESN'T CHANGE. The browser only re-checks a service worker
+   for updates when the worker's own script bytes change; an already
+   installed PWA with an unchanged sw.js silently keeps serving whatever
+   index.html it cached, forever, even after new commits land on the
+   server. The v2 release (2026-08-08/09) shipped real feature changes
+   without bumping this and would never have reached an already-installed
+   phone. Confirmed 2026-08-09: unregistering + clearing caches was
+   required before the v2 code path executed at all in a fresh tab. */
+var CACHE_NAME = "klipp-shell-v3";
 var SHELL_FILES = [
   "./",
   "./index.html",

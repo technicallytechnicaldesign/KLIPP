@@ -161,6 +161,11 @@
   }
   .round-btn.active{background:var(--bloom-deep);color:#fff}
   .top-right-btns{display:flex;gap:10px}
+  .icon-btn{display:flex;flex-direction:column;align-items:center;gap:4px}
+  .icon-btn-label{
+    font-size:10px;font-weight:800;color:#fff;letter-spacing:.02em;
+    text-shadow:0 1px 3px rgba(0,0,0,0.55);
+  }
 
   .filmstrip-wrap{
     position:absolute; z-index:8; background:rgba(0,0,0,0.35); backdrop-filter:blur(2px);
@@ -428,7 +433,11 @@
 <!-- card edit sheet -->
 <div id="card-edit-sheet">
   <div class="sheet-body">
-    <div class="sheet-title">write your cards</div>
+    <div class="sheet-title">title and end cards</div>
+    <div class="drawer-row" id="cards-on-row">
+      <span>show them when the film plays out</span>
+      <button class="switch" id="cards-on-switch" type="button" aria-label="title and end cards on or off"><span class="knob"></span></button>
+    </div>
     <div class="card-edit-row">
       <div class="card-edit-label">title card</div>
       <canvas id="title-preview-canvas" class="card-preview-canvas" width="240" height="140"></canvas>
@@ -460,11 +469,22 @@
     <div class="studio-topbar">
       <button class="round-btn" id="back-to-shelf" type="button" aria-label="back to shelf">&#8592;</button>
       <div class="top-right-btns">
-        <button class="round-btn" id="wand-btn" type="button" aria-label="magic wand">&#10024;</button>
-        <button class="round-btn" id="cards-toggle" type="button" aria-label="title and end cards toggle">&#127916;</button>
-        <button class="round-btn" id="cards-edit" type="button" aria-label="edit title and end card text">&#9999;</button>
-        <button class="round-btn" id="ghost-toggle" type="button" aria-label="ghost toggle">&#128123;</button>
-        <button class="send-btn" id="send-btn-studio" type="button" aria-label="send film">&#128233;</button>
+        <div class="icon-btn">
+          <button class="round-btn" id="wand-btn" type="button" aria-label="magic wand: stickers and spells">&#10024;</button>
+          <span class="icon-btn-label">magic</span>
+        </div>
+        <div class="icon-btn">
+          <button class="round-btn" id="cards-edit" type="button" aria-label="title and end cards: turn on or off, write your own words">&#127916;</button>
+          <span class="icon-btn-label">cards</span>
+        </div>
+        <div class="icon-btn">
+          <button class="round-btn" id="ghost-toggle" type="button" aria-label="ghost: see the last picture while you take the next">&#128123;</button>
+          <span class="icon-btn-label">ghost</span>
+        </div>
+        <div class="icon-btn">
+          <button class="send-btn" id="send-btn-studio" type="button" aria-label="send film">&#128233;</button>
+          <span class="icon-btn-label">send</span>
+        </div>
       </div>
     </div>
     <div class="filmstrip-wrap" id="filmstrip-wrap">
@@ -879,7 +899,7 @@ function openFilm(filmId){
     renderFilmstrip();
     updateOnionSkin();
     updateUndoAvailability();
-    updateCardsToggle();
+    updateCardsOnSwitch();
     renderStickerOverlay();
     startCameraOrDemo();
   });
@@ -919,16 +939,20 @@ $("ghost-toggle").addEventListener("click", function(){
   updateOnionSkin();
 });
 
-/* ---------------- MAGIC LAYER: title/end cards toggle ---------------- */
-function updateCardsToggle(){
-  var btn = $("cards-toggle");
+/* ---------------- MAGIC LAYER: title/end cards on/off ----------------
+   Lives inside the same card-edit sheet as the text fields now (KLI-0023):
+   one "cards" button opens one sheet with the on/off switch and the words,
+   instead of two look-alike icons in the topbar where it was never clear
+   which one turned cards on and which one let you write on them. */
+function updateCardsOnSwitch(){
+  var sw = $("cards-on-switch");
   var on = !!(state.currentFilm && state.currentFilm.cardsOn);
-  btn.classList.toggle("active", on);
+  sw.classList.toggle("on", on);
 }
-$("cards-toggle").addEventListener("click", function(){
+$("cards-on-switch").addEventListener("click", function(){
   if (!state.currentFilm) return;
   setCardsOn(!state.currentFilm.cardsOn);
-  updateCardsToggle();
+  updateCardsOnSwitch();
   showHeartToast(state.currentFilm.cardsOn ? "the film will open and end with a little magic" : "no more start and end cards for this film");
 });
 
@@ -985,6 +1009,7 @@ function openCardEditSheet(){
   ensureFilmMagicFields(film);
   $("title-text-input").value = film.titleText || "";
   $("end-text-input").value = film.endText || "";
+  updateCardsOnSwitch();
   $("card-edit-sheet").classList.add("open");
   if (navStack[navStack.length - 1] !== "overlay") navPush("overlay");
   startCardEditPreview();
@@ -1009,7 +1034,19 @@ $("cancel-card-edit").addEventListener("click", function(){
 var stickerPreviewRAF = null;
 var stickerDrag = null; /* {id, pointerId, lastX, lastY} while dragging (client px) */
 var stickerPinch = null; /* {stickerId, bPointerId, startDist, startScale} while a second finger pinches the picked up sticker */
+var pendingTouch = null; /* {pointerId, x, y} a first finger that touched down but missed every
+   sticker, held onto in case a second finger lands ON one a moment later. Real two-finger pinches
+   don't guarantee which finger's pointerdown the browser dispatches first, so without this, a
+   pinch where the "wrong" finger happens to register first silently turns into a drag with no
+   scale change at all: whichever finger DID hit becomes stickerDrag, the other is never looked
+   at again. */
 
+var stickerHintShown = false;
+function maybeShowStickerHint(){
+  if (stickerHintShown) return;
+  stickerHintShown = true;
+  showHeartToast("drag it to move, pinch it to grow or shrink, drag it up to the cloud to say goodbye");
+}
 function buildStickerTray(){
   var grid = $("sticker-tray-grid");
   if (grid.childNodes.length) return; /* built once */
@@ -1121,6 +1158,7 @@ stageOverlayCanvas().addEventListener("pointerdown", function(evt){
     state.placingSticker = null;
     addSticker(kind, pos.x, pos.y, life);
     renderStickerOverlay();
+    maybeShowStickerHint();
     return;
   }
   if (stickerDrag && evt.pointerId !== stickerDrag.pointerId){
@@ -1135,10 +1173,38 @@ stageOverlayCanvas().addEventListener("pointerdown", function(evt){
       startDist: dist || 1,
       startScale: (pinchTarget && typeof pinchTarget.scale === "number") ? pinchTarget.scale : 1
     };
+    pendingTouch = null;
+    return;
+  }
+  if (pendingTouch && pendingTouch.pointerId !== evt.pointerId){
+    /* a second finger landed while a first one is already down but hadn't
+       hit a sticker on its own. Real two-finger pinches don't guarantee
+       which finger's pointerdown the browser dispatches first, so hit-test
+       the MIDPOINT of both fingers instead, since a real pinch straddles
+       the sticker rather than either finger landing dead on its center. */
+    var midX = (pendingTouch.x + evt.clientX) / 2, midY = (pendingTouch.y + evt.clientY) / 2;
+    var midPos = pointToFraction({ clientX: midX, clientY: midY });
+    var straddleHit = nearestSticker(midPos.x, midPos.y);
+    if (straddleHit){
+      stickerDrag = { id: straddleHit.id, pointerId: pendingTouch.pointerId, lastX: pendingTouch.x, lastY: pendingTouch.y };
+      stickerPinch = {
+        stickerId: straddleHit.id,
+        bPointerId: evt.pointerId,
+        startDist: pointerDist(pendingTouch.x, pendingTouch.y, evt.clientX, evt.clientY) || 1,
+        startScale: (typeof straddleHit.scale === "number") ? straddleHit.scale : 1
+      };
+    }
+    pendingTouch = null;
     return;
   }
   var hit = nearestSticker(pos.x, pos.y);
-  if (!hit) return;
+  if (!hit){
+    /* remember this finger in case a second one lands on the sticker a
+       moment later, see pendingTouch above */
+    pendingTouch = { pointerId: evt.pointerId, x: evt.clientX, y: evt.clientY };
+    return;
+  }
+  pendingTouch = null;
   stickerDrag = { id: hit.id, pointerId: evt.pointerId, lastX: evt.clientX, lastY: evt.clientY };
   $("sticker-cloud").classList.add("show");
 });
@@ -1151,6 +1217,10 @@ stageOverlayCanvas().addEventListener("pointermove", function(evt){
     renderStickerOverlay();
     return;
   }
+  if (pendingTouch && evt.pointerId === pendingTouch.pointerId){
+    pendingTouch.x = evt.clientX; pendingTouch.y = evt.clientY;
+    return;
+  }
   if (!stickerDrag || evt.pointerId !== stickerDrag.pointerId) return;
   stickerDrag.lastX = evt.clientX; stickerDrag.lastY = evt.clientY;
   var pos = pointToFraction(evt);
@@ -1159,6 +1229,9 @@ stageOverlayCanvas().addEventListener("pointermove", function(evt){
   renderStickerOverlay();
 });
 function endStickerDrag(evt){
+  if (evt && pendingTouch && evt.pointerId === pendingTouch.pointerId){
+    pendingTouch = null;
+  }
   if (evt && stickerPinch && evt.pointerId === stickerPinch.bPointerId){
     /* the pinching finger lifted, the picked up sticker stays picked up */
     stickerPinch = null;
@@ -1168,8 +1241,13 @@ function endStickerDrag(evt){
   stickerPinch = null;
   var dragged = stickerDrag;
   stickerDrag = null;
+  /* check the drop point against the cloud BEFORE hiding it: hiding sets
+     display:none, which collapses getBoundingClientRect to zero, so an
+     overlap check done after would always fail. This was the actual bug
+     behind "give it back" never removing a dragged sticker. */
+  var droppedOnCloud = !!(evt && overCloud(evt));
   $("sticker-cloud").classList.remove("show", "armed");
-  if (evt && overCloud(evt)){
+  if (droppedOnCloud){
     removeSticker(dragged.id);
     renderStickerOverlay();
   }
