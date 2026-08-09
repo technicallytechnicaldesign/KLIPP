@@ -235,6 +235,27 @@
     color:#fff;font-weight:800;font-size:16px;margin-top:16px;
   }
 
+  /* ---------- CARD EDIT SHEET ---------- */
+  #card-edit-sheet{
+    position:fixed;inset:0;background:rgba(58,43,48,0.45);display:none;
+    align-items:flex-end;justify-content:center;z-index:60;
+  }
+  #card-edit-sheet.open{display:flex}
+  .card-edit-row{margin-bottom:16px}
+  .card-edit-label{font-size:13px;font-weight:700;color:var(--ink-2);margin-bottom:6px}
+  .card-preview-canvas{
+    width:100%;height:auto;aspect-ratio:12/7;border-radius:var(--radius-sm);
+    display:block;margin-bottom:8px;background:#000;
+  }
+  #title-text-input, #end-text-input{
+    width:100%;min-height:var(--tap-min);border-radius:var(--radius-md);border:2px solid var(--grid);
+    background:var(--faint);color:var(--ink);font-size:16px;font-weight:700;padding:0 14px;text-align:center;
+  }
+  #save-card-text{
+    display:block;width:100%;min-height:56px;border-radius:var(--radius-md);background:var(--bloom-deep);
+    color:#fff;font-weight:800;font-size:16px;margin-top:4px;
+  }
+
   /* ---------- SPELLS ROW (playback filters) ---------- */
   .spells-row{
     position:absolute;left:0;right:0;bottom:calc(112px + env(safe-area-inset-bottom,0px));
@@ -384,6 +405,10 @@
 <div id="sticker-tray">
   <div class="sheet-body">
     <div class="sheet-title">pick some magic</div>
+    <div class="drawer-row" id="peek-life-row">
+      <span>just a peek (a few frames)</span>
+      <button class="switch" id="peek-life-switch" type="button" aria-label="peek life toggle"><span class="knob"></span></button>
+    </div>
     <div class="sticker-tray-grid" id="sticker-tray-grid"></div>
     <button class="sheet-cancel" id="cancel-sticker-tray" type="button">never mind</button>
   </div>
@@ -397,6 +422,25 @@
     <input id="rename-input" type="text" maxlength="24" autocomplete="off">
     <button id="save-rename" type="button">save the name</button>
     <button class="sheet-cancel" id="cancel-rename" type="button">never mind</button>
+  </div>
+</div>
+
+<!-- card edit sheet -->
+<div id="card-edit-sheet">
+  <div class="sheet-body">
+    <div class="sheet-title">write your cards</div>
+    <div class="card-edit-row">
+      <div class="card-edit-label">title card</div>
+      <canvas id="title-preview-canvas" class="card-preview-canvas" width="240" height="140"></canvas>
+      <input id="title-text-input" type="text" maxlength="24" autocomplete="off" placeholder="my film">
+    </div>
+    <div class="card-edit-row">
+      <div class="card-edit-label">the end card</div>
+      <canvas id="end-preview-canvas" class="card-preview-canvas" width="240" height="140"></canvas>
+      <input id="end-text-input" type="text" maxlength="24" autocomplete="off" placeholder="the end">
+    </div>
+    <button id="save-card-text" type="button">save the cards</button>
+    <button class="sheet-cancel" id="cancel-card-edit" type="button">never mind</button>
   </div>
 </div>
 
@@ -418,6 +462,7 @@
       <div class="top-right-btns">
         <button class="round-btn" id="wand-btn" type="button" aria-label="magic wand">&#10024;</button>
         <button class="round-btn" id="cards-toggle" type="button" aria-label="title and end cards toggle">&#127916;</button>
+        <button class="round-btn" id="cards-edit" type="button" aria-label="edit title and end card text">&#9999;</button>
         <button class="round-btn" id="ghost-toggle" type="button" aria-label="ghost toggle">&#128123;</button>
         <button class="send-btn" id="send-btn-studio" type="button" aria-label="send film">&#128233;</button>
       </div>
@@ -529,6 +574,60 @@ function showView(name){
   for (var i=0;i<views.length;i++) views[i].classList.remove("active");
   $("view-"+name).classList.add("active");
 }
+
+/* ---------------- BACK BUTTON NAVIGATION ----------------
+   The view stack is shallow and linear: shelf (root) -> studio -> playback,
+   with any open sheet counting as one extra layer on top of whichever view
+   it opened from. navStack is our own bookkeeping of what has been pushed
+   to history, kept separate from history.state so the popstate handler has
+   one clear source of truth for what layer is being left.
+
+   navPush records a layer and pushes a real history entry so the device
+   back gesture has something to consume. navPop is how a button/sheet that
+   closes itself asks the browser to remove that entry too, so a later
+   physical back press does not land on a stale one; it only calls
+   history.back() (never touches navStack directly), because navStack is
+   only ever popped inside the popstate handler below, the one place that
+   actually knows an entry went away, whether a button triggered it or the
+   device's own back gesture did. That is what keeps a button click and a
+   real back press from double bookkeeping the same pop. */
+var navStack = [];
+function navPush(tag){
+  navStack.push(tag);
+  history.pushState({ klipp: tag }, "");
+}
+function navPop(expectedTag){
+  if (navStack.length && navStack[navStack.length - 1] === expectedTag) history.back();
+}
+function closeTopOverlayIfOpen(){
+  if ($("rename-sheet").classList.contains("open")){
+    pendingRenameId = null;
+    $("rename-sheet").classList.remove("open");
+    return true;
+  }
+  if ($("sticker-tray").classList.contains("open")){
+    $("sticker-tray").classList.remove("open");
+    return true;
+  }
+  if ($("card-edit-sheet").classList.contains("open")){
+    closeCardEditSheetUI();
+    return true;
+  }
+  if ($("new-film-sheet").classList.contains("open")){
+    $("new-film-sheet").classList.remove("open");
+    return true;
+  }
+  return false;
+}
+window.addEventListener("popstate", function(){
+  var closingTag = navStack.length ? navStack.pop() : null;
+  if (closingTag === "overlay"){ closeTopOverlayIfOpen(); return; }
+  if (closingTag === "playback"){ playbackBack(); return; }
+  if (closingTag === "studio"){ backToShelf(); return; }
+  /* closingTag null: already at the shelf with nothing open, so there was
+     nothing pushed to consume; the platform's own back behavior (exit or
+     background the app) is left alone, on purpose, per the brief. */
+});
 
 /* ---------------- IndexedDB layer ---------------- */
 var DB_NAME = "klipp", DB_VERSION = 1;
@@ -664,7 +763,8 @@ var state = {
   lastCaptureAt: 0,
   undoBuffer: null,    /* {frame, timeoutId} */
   gearHeld: false,
-  placingSticker: null /* sticker kind waiting for a tap on the stage */
+  placingSticker: null, /* sticker kind waiting for a tap on the stage */
+  placingStickerLife: "film" /* "film" or "peek", read by addSticker when the stage tap lands */
 };
 
 var SETTINGS_KEY = "klipp_onion_default";
@@ -739,15 +839,18 @@ function escapeHtml(s){
 /* ---------------- NEW FILM FLOW ---------------- */
 $("new-film-btn").addEventListener("click", function(){
   $("new-film-sheet").classList.add("open");
+  if (navStack[navStack.length - 1] !== "overlay") navPush("overlay");
 });
 $("cancel-new-film").addEventListener("click", function(){
   $("new-film-sheet").classList.remove("open");
+  navPop("overlay");
 });
 $("pick-portrait").addEventListener("click", function(){ newFilm("portrait"); });
 $("pick-landscape").addEventListener("click", function(){ newFilm("landscape"); });
 
 function newFilm(orientation){
   $("new-film-sheet").classList.remove("open");
+  navPop("overlay");
   return db.getFilms().then(function(films){
     var names = films.map(function(f){ return f.name; });
     return db.addFilm(orientation).then(function(film){
@@ -772,6 +875,7 @@ function openFilm(filmId){
     state.frames = frames;
     state.view = "studio";
     showView("studio");
+    if (navStack[navStack.length - 1] !== "studio") navPush("studio");
     renderFilmstrip();
     updateOnionSkin();
     updateUndoAvailability();
@@ -828,9 +932,83 @@ $("cards-toggle").addEventListener("click", function(){
   showHeartToast(state.currentFilm.cardsOn ? "the film will open and end with a little magic" : "no more start and end cards for this film");
 });
 
+/* ---------------- MAGIC LAYER: editable title and end card text ----------------
+   The sheet's live preview calls drawTitleCard/drawEndCard directly, the
+   exact same pure draw functions export and the fallback path use, so what
+   she sees while typing is honestly what ends up in the film. */
+function cardTitleText(film){
+  var t = (film && typeof film.titleText === "string") ? film.titleText.trim() : "";
+  return t || (film && film.name) || "my film";
+}
+function cardEndText(film){
+  var t = (film && typeof film.endText === "string") ? film.endText.trim() : "";
+  return t || "the end";
+}
+function setCardTexts(titleText, endText){
+  var film = state.currentFilm;
+  if (!film) return null;
+  film.titleText = String(titleText || "").slice(0, 24);
+  film.endText = String(endText || "").slice(0, 24);
+  db.updateFilm(film);
+  return film;
+}
+var cardEditRAF = null;
+function renderCardEditPreview(){
+  var film = state.currentFilm;
+  if (!film) return;
+  var now = (typeof performance !== "undefined") ? performance.now() : Date.now();
+  var titleTick = Math.floor(now / 90) % TITLE_TICKS;
+  var titleCanvas = $("title-preview-canvas");
+  drawTitleCard(titleCanvas.getContext("2d"), titleCanvas.width, titleCanvas.height,
+    titleTick, TITLE_TICKS, $("title-text-input").value.trim() || film.name || "my film");
+  var endTick = Math.floor(now / 90) % END_TICKS;
+  var endCanvas = $("end-preview-canvas");
+  drawEndCard(endCanvas.getContext("2d"), endCanvas.width, endCanvas.height,
+    endTick, END_TICKS, $("end-text-input").value.trim() || "the end");
+}
+function startCardEditPreview(){
+  stopCardEditPreview();
+  if (typeof requestAnimationFrame === "undefined"){ renderCardEditPreview(); return; }
+  function loop(){
+    renderCardEditPreview();
+    cardEditRAF = requestAnimationFrame(loop);
+  }
+  cardEditRAF = requestAnimationFrame(loop);
+}
+function stopCardEditPreview(){
+  if (cardEditRAF && typeof cancelAnimationFrame !== "undefined") cancelAnimationFrame(cardEditRAF);
+  cardEditRAF = null;
+}
+function openCardEditSheet(){
+  var film = state.currentFilm;
+  if (!film) return;
+  ensureFilmMagicFields(film);
+  $("title-text-input").value = film.titleText || "";
+  $("end-text-input").value = film.endText || "";
+  $("card-edit-sheet").classList.add("open");
+  if (navStack[navStack.length - 1] !== "overlay") navPush("overlay");
+  startCardEditPreview();
+}
+function closeCardEditSheetUI(){
+  $("card-edit-sheet").classList.remove("open");
+  stopCardEditPreview();
+}
+$("cards-edit").addEventListener("click", openCardEditSheet);
+$("save-card-text").addEventListener("click", function(){
+  setCardTexts($("title-text-input").value, $("end-text-input").value);
+  closeCardEditSheetUI();
+  navPop("overlay");
+  showHeartToast("your cards are saved");
+});
+$("cancel-card-edit").addEventListener("click", function(){
+  closeCardEditSheetUI();
+  navPop("overlay");
+});
+
 /* ---------------- MAGIC LAYER: wand tray + sticker stage overlay ---------------- */
 var stickerPreviewRAF = null;
-var stickerDrag = null; /* {id, pointerId} while dragging */
+var stickerDrag = null; /* {id, pointerId, lastX, lastY} while dragging (client px) */
+var stickerPinch = null; /* {stickerId, bPointerId, startDist, startScale} while a second finger pinches the picked up sticker */
 
 function buildStickerTray(){
   var grid = $("sticker-tray-grid");
@@ -848,6 +1026,7 @@ function buildStickerTray(){
     btn.addEventListener("click", function(){
       state.placingSticker = kind;
       $("sticker-tray").classList.remove("open");
+      navPop("overlay");
       showHeartToast("tap the stage to put it down");
     });
     grid.appendChild(btn);
@@ -855,10 +1034,18 @@ function buildStickerTray(){
 }
 $("wand-btn").addEventListener("click", function(){
   buildStickerTray();
+  state.placingStickerLife = "film";
+  $("peek-life-switch").classList.remove("on");
   $("sticker-tray").classList.add("open");
+  if (navStack[navStack.length - 1] !== "overlay") navPush("overlay");
 });
 $("cancel-sticker-tray").addEventListener("click", function(){
   $("sticker-tray").classList.remove("open");
+  navPop("overlay");
+});
+$("peek-life-switch").addEventListener("click", function(){
+  state.placingStickerLife = state.placingStickerLife === "peek" ? "film" : "peek";
+  $("peek-life-switch").classList.toggle("on", state.placingStickerLife === "peek");
 });
 
 function stageOverlayCanvas(){ return $("sticker-stage"); }
@@ -878,8 +1065,12 @@ function renderStickerOverlay(){
   var film = state.currentFilm;
   if (!film || !film.stickers) return;
   var tick = Math.floor((typeof performance !== "undefined" ? performance.now() : Date.now()) / 83);
+  /* the studio stage shows every placed sticker regardless of peek life,
+     deliberately: she is positioning and editing them here, not watching
+     the film play, so a peek sticker staying visible while she works with
+     it is the more honest picture, not a fork of the peek rule itself */
   film.stickers.forEach(function(st){
-    drawSticker(ctx, st.sid, st.x * size.w, st.y * size.h, Math.min(size.w, size.h) * 0.12, st.seed, tick);
+    drawSticker(ctx, st.sid, st.x * size.w, st.y * size.h, stickerSize(st, size.w, size.h), st.seed, tick);
   });
   if (state.view === "studio" && !stickerPreviewRAF && typeof requestAnimationFrame !== "undefined"){
     stickerPreviewRAF = requestAnimationFrame(function(){ stickerPreviewRAF = null; renderStickerOverlay(); });
@@ -907,6 +1098,15 @@ function nearestSticker(xFrac, yFrac){
   /* roughly a sticker's own footprint, in fraction space (~0.09) */
   return (best && bestDist < 0.09 * 0.09 * 4) ? best : null;
 }
+function stickerById(id){
+  var film = state.currentFilm;
+  if (!film || !film.stickers) return null;
+  return film.stickers.filter(function(s){ return s.id === id; })[0] || null;
+}
+function pointerDist(ax, ay, bx, by){
+  var dx = ax - bx, dy = ay - by;
+  return Math.sqrt(dx * dx + dy * dy);
+}
 function overCloud(evt){
   var cloud = $("sticker-cloud");
   var r = cloud.getBoundingClientRect();
@@ -917,25 +1117,55 @@ stageOverlayCanvas().addEventListener("pointerdown", function(evt){
   var pos = pointToFraction(evt);
   if (state.placingSticker){
     var kind = state.placingSticker;
+    var life = state.placingStickerLife;
     state.placingSticker = null;
-    addSticker(kind, pos.x, pos.y);
+    addSticker(kind, pos.x, pos.y, life);
     renderStickerOverlay();
+    return;
+  }
+  if (stickerDrag && evt.pointerId !== stickerDrag.pointerId){
+    /* a second finger landed while a sticker is already picked up: this is
+       the start of a pinch, not a new drag or a hit test on some other
+       sticker */
+    var pinchTarget = stickerById(stickerDrag.id);
+    var dist = pointerDist(stickerDrag.lastX, stickerDrag.lastY, evt.clientX, evt.clientY);
+    stickerPinch = {
+      stickerId: stickerDrag.id,
+      bPointerId: evt.pointerId,
+      startDist: dist || 1,
+      startScale: (pinchTarget && typeof pinchTarget.scale === "number") ? pinchTarget.scale : 1
+    };
     return;
   }
   var hit = nearestSticker(pos.x, pos.y);
   if (!hit) return;
-  stickerDrag = { id: hit.id, pointerId: evt.pointerId };
+  stickerDrag = { id: hit.id, pointerId: evt.pointerId, lastX: evt.clientX, lastY: evt.clientY };
   $("sticker-cloud").classList.add("show");
 });
 stageOverlayCanvas().addEventListener("pointermove", function(evt){
+  if (stickerPinch && evt.pointerId === stickerPinch.bPointerId){
+    var ax = stickerDrag ? stickerDrag.lastX : evt.clientX, ay = stickerDrag ? stickerDrag.lastY : evt.clientY;
+    var dist = pointerDist(ax, ay, evt.clientX, evt.clientY);
+    var ratio = dist / (stickerPinch.startDist || 1);
+    scaleSticker(stickerPinch.stickerId, stickerPinch.startScale * ratio);
+    renderStickerOverlay();
+    return;
+  }
   if (!stickerDrag || evt.pointerId !== stickerDrag.pointerId) return;
+  stickerDrag.lastX = evt.clientX; stickerDrag.lastY = evt.clientY;
   var pos = pointToFraction(evt);
   moveSticker(stickerDrag.id, pos.x, pos.y);
   $("sticker-cloud").classList.toggle("armed", overCloud(evt));
   renderStickerOverlay();
 });
 function endStickerDrag(evt){
+  if (evt && stickerPinch && evt.pointerId === stickerPinch.bPointerId){
+    /* the pinching finger lifted, the picked up sticker stays picked up */
+    stickerPinch = null;
+    return;
+  }
   if (!stickerDrag || (evt && evt.pointerId !== stickerDrag.pointerId)) return;
+  stickerPinch = null;
   var dragged = stickerDrag;
   stickerDrag = null;
   $("sticker-cloud").classList.remove("show", "armed");
@@ -953,6 +1183,7 @@ function openRenameSheet(filmId, currentName){
   pendingRenameId = filmId;
   $("rename-input").value = currentName || "";
   $("rename-sheet").classList.add("open");
+  if (navStack[navStack.length - 1] !== "overlay") navPush("overlay");
 }
 $("save-rename").addEventListener("click", function(){
   if (!pendingRenameId) return;
@@ -960,14 +1191,19 @@ $("save-rename").addEventListener("click", function(){
   var id = pendingRenameId;
   pendingRenameId = null;
   $("rename-sheet").classList.remove("open");
+  navPop("overlay");
   renameFilm(id, name).then(function(){ renderShelf(); });
 });
 $("cancel-rename").addEventListener("click", function(){
   pendingRenameId = null;
   $("rename-sheet").classList.remove("open");
+  navPop("overlay");
 });
 
-$("back-to-shelf").addEventListener("click", function(){ backToShelf(); });
+$("back-to-shelf").addEventListener("click", function(){
+  backToShelf();
+  navPop("studio");
+});
 function backToShelf(){
   stopCamera();
   stopStickerPreview();
@@ -1227,6 +1463,7 @@ function startPlayback(){
   if (!state.currentFilm) return;
   state.view = "playback";
   showView("playback");
+  if (navStack[navStack.length - 1] !== "playback") navPush("playback");
   renderSpellsRow();
   if (!state.frames.length){
     var ctx = $("playback-canvas").getContext("2d");
@@ -1272,7 +1509,8 @@ function drawPlaybackOverlay(ctx, w, h, tick){
   var film = state.currentFilm;
   if (!film) return;
   (film.stickers || []).forEach(function(st){
-    drawSticker(ctx, st.sid, st.x * w, st.y * h, Math.min(w, h) * 0.12, st.seed, tick);
+    if (!stickerVisibleForPhoto(st, playIndex)) return;
+    drawSticker(ctx, st.sid, st.x * w, st.y * h, stickerSize(st, w, h), st.seed, tick);
   });
   if (film.filter && film.filter !== "none"){
     applyFilmFilter(ctx, film.filter, w, h, tick, playTotalTicks, filmSeed(film));
@@ -1347,10 +1585,14 @@ function spawnPlaybackHeart(){
 
 $("play-btn").addEventListener("click", function(){ startPlayback(); });
 $("replay-btn").addEventListener("click", function(){ startPlayback(); });
-$("playback-back").addEventListener("click", function(){
+function playbackBack(){
   stopPlayback();
   state.view = "studio";
   showView("studio");
+}
+$("playback-back").addEventListener("click", function(){
+  playbackBack();
+  navPop("playback");
 });
 
 /* ---------------- EXPORT / MP4 PIPELINE ---------------- */
@@ -1662,7 +1904,7 @@ function drawTitleCard(ctx, w, h, tick, totalTicks, name){
     ctx.fillText(text.charAt(i), startX + i * charW, baseY + wob);
   }
 }
-function drawEndCard(ctx, w, h, tick, totalTicks){
+function drawEndCard(ctx, w, h, tick, totalTicks, text){
   ctx.fillStyle = PALETTE.bloomDeep;
   ctx.fillRect(0, 0, w, h);
   var openFrac = Math.min(1, (tick + 1) / totalTicks);
@@ -1685,10 +1927,10 @@ function drawEndCard(ctx, w, h, tick, totalTicks){
     ctx.fillStyle = "rgba(255,255,255," + alpha.toFixed(2) + ")";
     var fontSize = Math.floor(Math.min(w, h) * 0.09);
     ctx.font = "bold " + fontSize + "px sans-serif";
-    var text = "the end";
+    var displayText = String(text || "the end");
     var charW = fontSize * 0.55;
-    var startX = (w - charW * text.length) / 2;
-    for (var c = 0; c < text.length; c++) ctx.fillText(text.charAt(c), startX + c * charW, h / 2);
+    var startX = (w - charW * displayText.length) / 2;
+    for (var c = 0; c < displayText.length; c++) ctx.fillText(displayText.charAt(c), startX + c * charW, h / 2);
     drawSticker(ctx, "heart", w / 2, h / 2 + fontSize * 1.2, fontSize * 0.7, 7, tick);
   }
 }
@@ -1700,17 +1942,18 @@ function drawEndCard(ctx, w, h, tick, totalTicks){
 function drawTimelineEntryToCanvas(ctx, entry, film, size, totalTicks, bitmapGetter){
   ctx.clearRect(0, 0, size.w, size.h);
   if (entry.segment === "title"){
-    drawTitleCard(ctx, size.w, size.h, entry.segmentTick, TITLE_TICKS, film.name);
+    drawTitleCard(ctx, size.w, size.h, entry.segmentTick, TITLE_TICKS, cardTitleText(film));
     return Promise.resolve();
   }
   if (entry.segment === "end"){
-    drawEndCard(ctx, size.w, size.h, entry.segmentTick, END_TICKS);
+    drawEndCard(ctx, size.w, size.h, entry.segmentTick, END_TICKS, cardEndText(film));
     return Promise.resolve();
   }
   return bitmapGetter(entry.photoIndex).then(function(bmp){
     ctx.drawImage(bmp, 0, 0, size.w, size.h);
     (film.stickers || []).forEach(function(st){
-      drawSticker(ctx, st.sid, st.x * size.w, st.y * size.h, Math.min(size.w, size.h) * 0.12, st.seed, entry.frameIndex);
+      if (!stickerVisibleForPhoto(st, entry.photoIndex)) return;
+      drawSticker(ctx, st.sid, st.x * size.w, st.y * size.h, stickerSize(st, size.w, size.h), st.seed, entry.frameIndex);
     });
     if (film.filter && film.filter !== "none"){
       applyFilmFilter(ctx, film.filter, size.w, size.h, entry.frameIndex, totalTicks, filmSeed(film));
@@ -1724,9 +1967,32 @@ function ensureFilmMagicFields(film){
   if (!film.stickers) film.stickers = [];
   if (!film.filter) film.filter = "none";
   if (typeof film.cardsOn !== "boolean") film.cardsOn = true;
+  if (typeof film.titleText !== "string") film.titleText = "";
+  if (typeof film.endText !== "string") film.endText = "";
   return film;
 }
-function addSticker(sid, xFrac, yFrac){
+/* a placed sticker's scale, and the (seed, frameIndex) window a "peek" life
+   sticker is allowed to draw in: both are pure functions of the sticker's
+   own record, called from every draw site (studio overlay, playback,
+   export) instead of three separate computations, per the brief. */
+var STICKER_SCALE_MIN = 0.5, STICKER_SCALE_MAX = 2.5;
+var PEEK_WINDOW_PHOTOS = 3;
+function clampStickerScale(v){
+  v = Number(v);
+  if (!isFinite(v)) v = 1;
+  return Math.max(STICKER_SCALE_MIN, Math.min(STICKER_SCALE_MAX, v));
+}
+function stickerSize(st, w, h){
+  var base = Math.min(w, h) * 0.12;
+  var scale = (st && typeof st.scale === "number") ? st.scale : 1;
+  return base * scale;
+}
+function stickerVisibleForPhoto(st, photoIndex){
+  if (!st || st.life !== "peek") return true;
+  var anchor = (typeof st.anchorPhotoIndex === "number") ? st.anchorPhotoIndex : 0;
+  return photoIndex >= anchor && photoIndex < anchor + PEEK_WINDOW_PHOTOS;
+}
+function addSticker(sid, xFrac, yFrac, life){
   var film = state.currentFilm;
   if (!film) return null;
   ensureFilmMagicFields(film);
@@ -1734,7 +2000,11 @@ function addSticker(sid, xFrac, yFrac){
     showHeartToast("the film is full of magic already");
     return null;
   }
-  var st = { id: uid(), sid: sid, seed: Math.floor(Math.random() * 1e9), x: clamp01(xFrac), y: clamp01(yFrac) };
+  var anchorPhotoIndex = state.frames.length ? state.frames.length - 1 : 0;
+  var st = {
+    id: uid(), sid: sid, seed: Math.floor(Math.random() * 1e9), x: clamp01(xFrac), y: clamp01(yFrac),
+    scale: 1, life: (life === "peek" ? "peek" : "film"), anchorPhotoIndex: anchorPhotoIndex
+  };
   film.stickers.push(st);
   db.updateFilm(film);
   return st;
@@ -1745,6 +2015,15 @@ function moveSticker(id, xFrac, yFrac){
   var st = film.stickers.filter(function(s){ return s.id === id; })[0];
   if (!st) return null;
   st.x = clamp01(xFrac); st.y = clamp01(yFrac);
+  db.updateFilm(film);
+  return st;
+}
+function scaleSticker(id, scale){
+  var film = state.currentFilm;
+  if (!film || !film.stickers) return null;
+  var st = film.stickers.filter(function(s){ return s.id === id; })[0];
+  if (!st) return null;
+  st.scale = clampStickerScale(scale);
   db.updateFilm(film);
   return st;
 }
@@ -2165,7 +2444,22 @@ window.KLIPP = {
   STICKER_KINDS: STICKER_KINDS,
   TITLE_TICKS: TITLE_TICKS,
   END_TICKS: END_TICKS,
-  FIREWORKS_HOLD_TICKS: FIREWORKS_HOLD_TICKS
+  FIREWORKS_HOLD_TICKS: FIREWORKS_HOLD_TICKS,
+  /* v2: editable cards, back nav, gestures */
+  cardTitleText: cardTitleText,
+  cardEndText: cardEndText,
+  setCardTexts: setCardTexts,
+  drawTitleCard: drawTitleCard,
+  drawEndCard: drawEndCard,
+  scaleSticker: scaleSticker,
+  stickerSize: stickerSize,
+  stickerVisibleForPhoto: stickerVisibleForPhoto,
+  STICKER_SCALE_MIN: STICKER_SCALE_MIN,
+  STICKER_SCALE_MAX: STICKER_SCALE_MAX,
+  PEEK_WINDOW_PHOTOS: PEEK_WINDOW_PHOTOS,
+  playbackBack: playbackBack,
+  navDepth: function(){ return navStack.length; },
+  stopStickerPreview: stopStickerPreview
 };
 
 /* ---------------- BOOT ---------------- */
