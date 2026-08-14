@@ -2871,21 +2871,522 @@ function voicePuff(actx, dest, t, params){
     cutoff: params.cutoff || 1200, noiseSeed: params.noiseSeed, noiseSalt: params.noiseSalt };
   return synthNoisePuff(actx, dest, t, p);
 }
-var VOICE_FNS = { pluck: voicePluck, bell: voiceBell, pad: voicePad, puff: voicePuff, pop: voicePop, chirp: voiceChirp, boing: voiceBoing };
+var VOICE_FNS_BASE = { pluck: voicePluck, bell: voiceBell, pad: voicePad, puff: voicePuff, pop: voicePop, chirp: voiceChirp, boing: voiceBoing };
+
+/* ---------------- v5: one voice per sticker kind, plus a rare variant ----------------
+   23 kinds, 23 gestures. Each function below is a small instrument of its
+   own (own oscillator shapes, own envelope, own timing), not a shared
+   primitive with a different pitch. `params.rare` (set once, deterministically,
+   by buildEventScoreFromStickers) swaps in an occasional flourish so the
+   same sticker can surprise her across films while staying identical on
+   replay and export. semitoneRatio keeps every extra note used for a
+   chord/run/fanfare exactly on the film's own pentatonic steps, so nothing
+   she piles on can land dissonant. */
+function semitoneRatio(n){ return Math.pow(2, n / 12); }
+
+/* the shared rare-variant flourish: a soft answering note an octave (or a
+   fifth) above the main gesture, quieter and a little longer, arriving just
+   after the main sound settles. Direction and voice are picked from the
+   event's own voiceSeed, so it stays fixed for that sticker in that film. */
+function scheduleRareFlourish(actx, dest, t, freq, opts){
+  opts = opts || {};
+  var pan = (typeof opts.pan === "number") ? opts.pan : 0;
+  var seed = opts.voiceSeed || 1;
+  var decay = (typeof opts.decay === "number") ? opts.decay : 0.5;
+  var gainAmt = (typeof opts.gain === "number") ? opts.gain : 0.3;
+  var up = klippRand(seed, 0, 7061) > 0.35;
+  var answerFreq = up ? freq * 2 : freq * 1.5;
+  var gap = Math.max(0.05, decay * 0.55);
+  synthBell(actx, dest, t + gap, answerFreq, { decay: decay * 1.6 + 0.4, gain: gainAmt * 0.4, pan: pan });
+}
+
+/* heart: a soft heartbeat, two quick plucks at the same pitch, the second
+   a touch quieter, like a real thump-thump */
+function voiceHeart(actx, dest, t, params){
+  params = params || {};
+  var freq = params.freq || 440;
+  var decay = (typeof params.decay === "number") ? params.decay : 0.35;
+  var gainAmt = (typeof params.gain === "number") ? params.gain : 0.4;
+  var pan = params.pan;
+  var h1 = synthPluck(actx, dest, t, freq, { decay: decay * 0.6, gain: gainAmt, pan: pan });
+  synthPluck(actx, dest, t + decay * 0.42, freq, { decay: decay * 0.7, gain: gainAmt * 0.7, pan: pan });
+  if (params.rare) scheduleRareFlourish(actx, dest, t, freq, { decay: decay, gain: gainAmt, pan: pan, voiceSeed: params.voiceSeed });
+  return h1;
+}
+/* sparkle: a fast three-note micro run, high and short, like light catching
+   something */
+function voiceSparkle(actx, dest, t, params){
+  params = params || {};
+  var freq = params.freq || 440;
+  var decay = (typeof params.decay === "number") ? params.decay : 0.18;
+  var gainAmt = (typeof params.gain === "number") ? params.gain : 0.35;
+  var pan = params.pan;
+  var steps = [0, 4, 9];
+  var gap = 0.05;
+  steps.forEach(function(n, i){
+    synthBell(actx, dest, t + i * gap, freq * 2 * semitoneRatio(n), { decay: decay, gain: gainAmt * (1 - i * 0.15), pan: pan });
+  });
+  if (params.rare) scheduleRareFlourish(actx, dest, t + steps.length * gap, freq * 2, { decay: decay, gain: gainAmt, pan: pan, voiceSeed: params.voiceSeed });
+  return { stop: function(){} };
+}
+/* rainbow: a harp-like run straight up the pentatonic scale */
+function voiceRainbow(actx, dest, t, params){
+  params = params || {};
+  var freq = params.freq || 440;
+  var decay = (typeof params.decay === "number") ? params.decay : 0.3;
+  var gainAmt = (typeof params.gain === "number") ? params.gain : 0.35;
+  var pan = params.pan;
+  var steps = params.rare ? [0, 2, 4, 7, 9, 12] : [0, 2, 4, 7, 9];
+  var gap = 0.065;
+  steps.forEach(function(n, i){
+    synthPluck(actx, dest, t + i * gap, freq * semitoneRatio(n), { decay: decay, gain: gainAmt * (0.9 - i * 0.05), pan: pan });
+  });
+  return { stop: function(){} };
+}
+/* star: a bell with a fast shimmer riding on top, a little twinkle */
+function voiceStar(actx, dest, t, params){
+  params = params || {};
+  var freq = params.freq || 440;
+  var decay = (typeof params.decay === "number") ? params.decay : 0.9;
+  var gainAmt = (typeof params.gain === "number") ? params.gain : 0.28;
+  var pan = params.pan;
+  var main = synthBell(actx, dest, t, freq, { decay: decay, gain: gainAmt, pan: pan });
+  var shimmer = actx.createOscillator();
+  shimmer.type = "sine";
+  shimmer.frequency.setValueAtTime(freq * 4, t);
+  shimmer.frequency.linearRampToValueAtTime(freq * 4.3, t + 0.08);
+  shimmer.frequency.linearRampToValueAtTime(freq * 4, t + 0.16);
+  var sg = actx.createGain();
+  sg.gain.setValueAtTime(0.0001, t);
+  sg.gain.linearRampToValueAtTime(gainAmt * 0.35, t + 0.01);
+  sg.gain.exponentialRampToValueAtTime(0.0001, t + Math.min(decay, 0.35));
+  shimmer.connect(sg);
+  connectWithPan(actx, sg, dest, pan, t);
+  shimmer.start(t); shimmer.stop(t + 0.4);
+  if (params.rare) scheduleRareFlourish(actx, dest, t, freq, { decay: decay, gain: gainAmt, pan: pan, voiceSeed: params.voiceSeed });
+  return main;
+}
+/* trex: a good boing, kept, but with a vibrato wobble riding the downward
+   glide instead of a plain sweep */
+function voiceTrex(actx, dest, t, params){
+  params = params || {};
+  var freq = params.freq || 440;
+  var decay = (typeof params.decay === "number") ? params.decay : 0.5;
+  var gainAmt = (typeof params.gain === "number") ? params.gain : 0.32;
+  var pan = params.pan;
+  var osc = actx.createOscillator();
+  osc.type = "sine";
+  osc.frequency.setValueAtTime(freq * 1.7, t);
+  osc.frequency.exponentialRampToValueAtTime(Math.max(28, freq * 0.55), t + decay);
+  var lfo = actx.createOscillator();
+  lfo.type = "sine";
+  lfo.frequency.setValueAtTime(22, t);
+  var lfoGain = actx.createGain();
+  lfoGain.gain.setValueAtTime(freq * 0.06, t);
+  lfo.connect(lfoGain); lfoGain.connect(osc.frequency);
+  var g = actx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.linearRampToValueAtTime(gainAmt, t + 0.015);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + Math.max(0.05, decay));
+  osc.connect(g);
+  connectWithPan(actx, g, dest, pan, t);
+  osc.start(t); lfo.start(t);
+  osc.stop(t + decay + 0.1); lfo.stop(t + decay + 0.1);
+  if (params.rare) scheduleRareFlourish(actx, dest, t, freq, { decay: decay, gain: gainAmt, pan: pan, voiceSeed: params.voiceSeed });
+  return { stop: function(){ try { osc.stop(); } catch (e) {} try { lfo.stop(); } catch (e) {} } };
+}
+/* rabbit: two quick ascending hops with a small gap, like a bounce */
+function voiceRabbit(actx, dest, t, params){
+  params = params || {};
+  var freq = params.freq || 440;
+  var decay = (typeof params.decay === "number") ? params.decay : 0.16;
+  var gainAmt = (typeof params.gain === "number") ? params.gain : 0.3;
+  var pan = params.pan;
+  voiceChirp(actx, dest, t, { freq: freq, decay: decay, gain: gainAmt, pan: pan });
+  voiceChirp(actx, dest, t + decay + 0.07, { freq: freq * semitoneRatio(4), decay: decay, gain: gainAmt * 0.9, pan: pan });
+  if (params.rare) voiceChirp(actx, dest, t + (decay + 0.07) * 2 + 0.04, { freq: freq * semitoneRatio(9), decay: decay * 1.2, gain: gainAmt * 0.6, pan: pan });
+  return { stop: function(){} };
+}
+/* rock: a solid little thud, low pluck plus a tiny filtered knock */
+function voiceRock(actx, dest, t, params){
+  params = params || {};
+  var freq = params.freq || 440;
+  var decay = (typeof params.decay === "number") ? params.decay : 0.22;
+  var gainAmt = (typeof params.gain === "number") ? params.gain : 0.4;
+  var pan = params.pan;
+  var osc = actx.createOscillator();
+  osc.type = "triangle";
+  osc.frequency.setValueAtTime(freq * 0.5, t);
+  var g = actx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.linearRampToValueAtTime(gainAmt, t + 0.004);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + Math.max(0.05, decay * 0.7));
+  osc.connect(g);
+  connectWithPan(actx, g, dest, pan, t);
+  osc.start(t); osc.stop(t + decay + 0.1);
+  synthNoisePuff(actx, dest, t, { decay: decay * 0.35, gain: gainAmt * 0.5, cutoff: 500, pan: pan,
+    noiseSeed: params.voiceSeed || 1, noiseSalt: 7071 });
+  if (params.rare) scheduleRareFlourish(actx, dest, t, freq, { decay: decay, gain: gainAmt, pan: pan, voiceSeed: params.voiceSeed });
+  return { stop: function(){ try { osc.stop(); } catch (e) {} } };
+}
+/* cat: two notes with a real pitch bend between them, a small meow */
+function voiceCat(actx, dest, t, params){
+  params = params || {};
+  var freq = params.freq || 440;
+  var decay = (typeof params.decay === "number") ? params.decay : 0.32;
+  var gainAmt = (typeof params.gain === "number") ? params.gain : 0.3;
+  var pan = params.pan;
+  var osc = actx.createOscillator();
+  osc.type = "sawtooth";
+  osc.frequency.setValueAtTime(freq * 0.85, t);
+  osc.frequency.linearRampToValueAtTime(freq * 1.4, t + decay * 0.35);
+  osc.frequency.linearRampToValueAtTime(freq * 1.05, t + decay * 0.7);
+  osc.frequency.linearRampToValueAtTime(freq * 0.9, t + decay);
+  var filter = actx.createBiquadFilter();
+  filter.type = "lowpass";
+  filter.frequency.setValueAtTime(freq * 5, t);
+  var g = actx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.linearRampToValueAtTime(gainAmt, t + 0.03);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + Math.max(0.08, decay));
+  osc.connect(filter); filter.connect(g);
+  connectWithPan(actx, g, dest, pan, t);
+  osc.start(t); osc.stop(t + decay + 0.1);
+  if (params.rare) scheduleRareFlourish(actx, dest, t, freq, { decay: decay, gain: gainAmt, pan: pan, voiceSeed: params.voiceSeed });
+  return { stop: function(){ try { osc.stop(); } catch (e) {} } };
+}
+/* butterfly: a fluttering tremolo, gain wobbling fast while the pitch
+   drifts up a tone and back */
+function voiceButterfly(actx, dest, t, params){
+  params = params || {};
+  var freq = params.freq || 440;
+  var decay = (typeof params.decay === "number") ? params.decay : 0.7;
+  var gainAmt = (typeof params.gain === "number") ? params.gain : 0.26;
+  var pan = params.pan;
+  var osc = actx.createOscillator();
+  osc.type = "sine";
+  osc.frequency.setValueAtTime(freq, t);
+  osc.frequency.linearRampToValueAtTime(freq * semitoneRatio(2), t + decay * 0.5);
+  osc.frequency.linearRampToValueAtTime(freq, t + decay);
+  var lfo = actx.createOscillator();
+  lfo.type = "sine";
+  lfo.frequency.setValueAtTime(11, t);
+  var lfoGain = actx.createGain();
+  lfoGain.gain.setValueAtTime(gainAmt * 0.45, t);
+  var g = actx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.linearRampToValueAtTime(gainAmt, t + 0.06);
+  g.gain.setValueAtTime(gainAmt, t + decay * 0.8);
+  g.gain.linearRampToValueAtTime(0.0001, t + decay);
+  lfo.connect(lfoGain); lfoGain.connect(g.gain);
+  osc.connect(g);
+  connectWithPan(actx, g, dest, pan, t);
+  osc.start(t); lfo.start(t);
+  osc.stop(t + decay + 0.1); lfo.stop(t + decay + 0.1);
+  if (params.rare) scheduleRareFlourish(actx, dest, t, freq, { decay: decay, gain: gainAmt, pan: pan, voiceSeed: params.voiceSeed });
+  return { stop: function(){ try { osc.stop(); } catch (e) {} try { lfo.stop(); } catch (e) {} } };
+}
+/* snail: absurdly slow, a soft glissando that takes its time arriving */
+function voiceSnail(actx, dest, t, params){
+  params = params || {};
+  var freq = params.freq || 440;
+  var decay = Math.max(1.4, (typeof params.decay === "number") ? params.decay * 3 : 1.6);
+  var gainAmt = (typeof params.gain === "number") ? params.gain * 0.7 : 0.22;
+  var pan = params.pan;
+  var osc = actx.createOscillator();
+  osc.type = "triangle";
+  osc.frequency.setValueAtTime(freq * 0.9, t);
+  osc.frequency.linearRampToValueAtTime(freq * semitoneRatio(2), t + decay);
+  var g = actx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.linearRampToValueAtTime(gainAmt, t + decay * 0.4);
+  g.gain.setValueAtTime(gainAmt, t + decay * 0.75);
+  g.gain.linearRampToValueAtTime(0.0001, t + decay);
+  osc.connect(g);
+  connectWithPan(actx, g, dest, pan, t);
+  osc.start(t); osc.stop(t + decay + 0.1);
+  if (params.rare) scheduleRareFlourish(actx, dest, t, freq, { decay: decay, gain: gainAmt, pan: pan, voiceSeed: params.voiceSeed });
+  return { stop: function(){ try { osc.stop(); } catch (e) {} } };
+}
+/* bird: a cluster of three quick chirps at slightly different pitches,
+   never quite the same rhythm twice (jittered from the sticker's own seed,
+   still fixed for that sticker in that film) */
+function voiceBird(actx, dest, t, params){
+  params = params || {};
+  var freq = params.freq || 440;
+  var decay = (typeof params.decay === "number") ? params.decay : 0.14;
+  var gainAmt = (typeof params.gain === "number") ? params.gain : 0.3;
+  var pan = params.pan;
+  var vseed = params.voiceSeed || 1;
+  var count = params.rare ? 4 : 3;
+  var when = t;
+  for (var i = 0; i < count; i++){
+    var jitterGap = 0.06 + klippRand(vseed, i, 7081) * 0.07;
+    var stepUp = Math.floor(klippRand(vseed, i, 7082) * 3);
+    voiceChirp(actx, dest, when, { freq: freq * semitoneRatio(stepUp * 2), decay: decay, gain: gainAmt * (0.95 - i * 0.08), pan: pan });
+    when += jitterGap;
+  }
+  return { stop: function(){} };
+}
+/* sun: a warm chord that rises and opens out, filter sweeping brighter */
+function voiceSun(actx, dest, t, params){
+  params = params || {};
+  var freq = params.freq || 440;
+  var dur = (typeof params.decay === "number") ? params.decay * 2.4 : 1.4;
+  var gainAmt = (typeof params.gain === "number") ? params.gain * 0.8 : 0.22;
+  var pan = params.pan;
+  var steps = [0, 4, 7];
+  var filter = actx.createBiquadFilter();
+  filter.type = "lowpass";
+  filter.frequency.setValueAtTime(500, t);
+  filter.frequency.linearRampToValueAtTime(4200, t + dur * 0.7);
+  var out = actx.createGain();
+  out.gain.setValueAtTime(0.0001, t);
+  out.gain.linearRampToValueAtTime(gainAmt, t + dur * 0.35);
+  out.gain.setValueAtTime(gainAmt, t + dur * 0.7);
+  out.gain.linearRampToValueAtTime(0.0001, t + dur);
+  filter.connect(out);
+  connectWithPan(actx, out, dest, pan, t);
+  var oscs = [];
+  steps.forEach(function(n){
+    var osc = actx.createOscillator();
+    osc.type = "triangle";
+    osc.frequency.setValueAtTime(freq * semitoneRatio(n), t);
+    osc.connect(filter);
+    osc.start(t); osc.stop(t + dur + 0.1);
+    oscs.push(osc);
+  });
+  if (params.rare) scheduleRareFlourish(actx, dest, t + dur * 0.5, freq, { decay: dur * 0.5, gain: gainAmt, pan: pan, voiceSeed: params.voiceSeed });
+  return { stop: function(){ oscs.forEach(function(o){ try { o.stop(); } catch (e) {} }); } };
+}
+/* cloud: an airy breathy pad, soft filtered noise wash under a slow sine */
+function voiceCloud(actx, dest, t, params){
+  params = params || {};
+  var freq = params.freq || 440;
+  var dur = (typeof params.decay === "number") ? params.decay * 2.2 : 1.6;
+  var gainAmt = (typeof params.gain === "number") ? params.gain * 0.7 : 0.18;
+  var pan = params.pan;
+  var pad = synthPad(actx, dest, t, freq * 0.5, { dur: dur, gain: gainAmt, pan: pan });
+  synthNoisePuff(actx, dest, t, { decay: dur * 0.9, gain: gainAmt * 0.35, cutoff: 900, pan: pan,
+    noiseSeed: params.voiceSeed || 1, noiseSalt: 7091 });
+  if (params.rare) scheduleRareFlourish(actx, dest, t, freq, { decay: dur * 0.6, gain: gainAmt, pan: pan, voiceSeed: params.voiceSeed });
+  return pad;
+}
+/* moon: a deep soft bowl with a long tail, the quietest thing in the app */
+function voiceMoon(actx, dest, t, params){
+  params = params || {};
+  var freq = params.freq || 440;
+  var dur = (typeof params.decay === "number") ? params.decay * 2.6 : 2.1;
+  var gainAmt = (typeof params.gain === "number") ? params.gain * 0.4 : 0.13;
+  var pan = params.pan;
+  var osc = actx.createOscillator();
+  osc.type = "sine";
+  osc.frequency.setValueAtTime(freq * 0.5, t);
+  var filter = actx.createBiquadFilter();
+  filter.type = "lowpass";
+  filter.frequency.setValueAtTime(900, t);
+  var g = actx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.linearRampToValueAtTime(gainAmt, t + dur * 0.4);
+  g.gain.setValueAtTime(gainAmt, t + dur * 0.6);
+  g.gain.linearRampToValueAtTime(0.0001, t + dur);
+  osc.connect(filter); filter.connect(g);
+  connectWithPan(actx, g, dest, pan, t);
+  osc.start(t); osc.stop(t + dur + 0.15);
+  if (params.rare) scheduleRareFlourish(actx, dest, t + dur * 0.3, freq, { decay: dur * 0.5, gain: gainAmt * 1.5, pan: pan, voiceSeed: params.voiceSeed });
+  return { stop: function(){ try { osc.stop(); } catch (e) {} } };
+}
+/* bolt: a short filtered noise crackle into a bright zap, the one sharp
+   sound in the set */
+function voiceBolt(actx, dest, t, params){
+  params = params || {};
+  var freq = params.freq || 440;
+  var decay = (typeof params.decay === "number") ? params.decay : 0.18;
+  var gainAmt = (typeof params.gain === "number") ? params.gain : 0.36;
+  var pan = params.pan;
+  synthNoisePuff(actx, dest, t, { decay: 0.05, gain: gainAmt * 0.8, cutoff: 5200, pan: pan,
+    noiseSeed: params.voiceSeed || 1, noiseSalt: 7101 });
+  var osc = actx.createOscillator();
+  osc.type = "square";
+  osc.frequency.setValueAtTime(freq * 2.5, t + 0.03);
+  osc.frequency.exponentialRampToValueAtTime(freq * 4.5, t + 0.03 + decay * 0.5);
+  var g = actx.createGain();
+  g.gain.setValueAtTime(0.0001, t + 0.03);
+  g.gain.linearRampToValueAtTime(gainAmt, t + 0.035);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.03 + Math.max(0.04, decay));
+  osc.connect(g);
+  connectWithPan(actx, g, dest, pan, t);
+  osc.start(t + 0.03); osc.stop(t + 0.03 + decay + 0.05);
+  if (params.rare) scheduleRareFlourish(actx, dest, t, freq, { decay: decay, gain: gainAmt, pan: pan, voiceSeed: params.voiceSeed });
+  return { stop: function(){ try { osc.stop(); } catch (e) {} } };
+}
+/* balloon: a rising squeak (blowing up) into a quick pop */
+function voiceBalloon(actx, dest, t, params){
+  params = params || {};
+  var freq = params.freq || 440;
+  var decay = (typeof params.decay === "number") ? params.decay : 0.4;
+  var gainAmt = (typeof params.gain === "number") ? params.gain : 0.3;
+  var pan = params.pan;
+  var osc = actx.createOscillator();
+  osc.type = "sawtooth";
+  osc.frequency.setValueAtTime(freq * 0.6, t);
+  osc.frequency.linearRampToValueAtTime(freq * 1.4, t + decay * 0.75);
+  var g = actx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.linearRampToValueAtTime(gainAmt * 0.55, t + 0.05);
+  g.gain.linearRampToValueAtTime(0.0001, t + decay * 0.75);
+  osc.connect(g);
+  connectWithPan(actx, g, dest, pan, t);
+  osc.start(t); osc.stop(t + decay * 0.75 + 0.05);
+  synthNoisePuff(actx, dest, t + decay * 0.75, { decay: 0.08, gain: gainAmt, cutoff: 3800, pan: pan,
+    noiseSeed: params.voiceSeed || 1, noiseSalt: 7111 });
+  if (params.rare) scheduleRareFlourish(actx, dest, t + decay * 0.75, freq, { decay: decay * 0.5, gain: gainAmt, pan: pan, voiceSeed: params.voiceSeed });
+  return { stop: function(){ try { osc.stop(); } catch (e) {} } };
+}
+/* cake: a thick two-note glassy chord, warm and short */
+function voiceCake(actx, dest, t, params){
+  params = params || {};
+  var freq = params.freq || 440;
+  var decay = (typeof params.decay === "number") ? params.decay : 0.55;
+  var gainAmt = (typeof params.gain === "number") ? params.gain : 0.3;
+  var pan = params.pan;
+  var a = synthBell(actx, dest, t, freq, { decay: decay, gain: gainAmt * 0.75, pan: pan });
+  synthBell(actx, dest, t + 0.015, freq * semitoneRatio(4), { decay: decay * 0.9, gain: gainAmt * 0.55, pan: pan });
+  if (params.rare) scheduleRareFlourish(actx, dest, t, freq, { decay: decay, gain: gainAmt, pan: pan, voiceSeed: params.voiceSeed });
+  return a;
+}
+/* crown: a tiny three note fanfare, quick and proud */
+function voiceCrown(actx, dest, t, params){
+  params = params || {};
+  var freq = params.freq || 440;
+  var decay = (typeof params.decay === "number") ? params.decay : 0.2;
+  var gainAmt = (typeof params.gain === "number") ? params.gain : 0.34;
+  var pan = params.pan;
+  var steps = params.rare ? [0, 4, 7, 12] : [0, 4, 7];
+  var gap = 0.09;
+  steps.forEach(function(n, i){
+    synthPluck(actx, dest, t + i * gap, freq * semitoneRatio(n), { decay: decay, gain: gainAmt * (0.85 + i * 0.05), pan: pan });
+  });
+  return { stop: function(){} };
+}
+/* present: a tiny suspense swell then a bright "ta-da" chime */
+function voicePresent(actx, dest, t, params){
+  params = params || {};
+  var freq = params.freq || 440;
+  var decay = (typeof params.decay === "number") ? params.decay : 0.3;
+  var gainAmt = (typeof params.gain === "number") ? params.gain : 0.3;
+  var pan = params.pan;
+  var swellDur = 0.14;
+  var osc = actx.createOscillator();
+  osc.type = "triangle";
+  osc.frequency.setValueAtTime(freq * 0.9, t);
+  var g = actx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.linearRampToValueAtTime(gainAmt * 0.4, t + swellDur);
+  g.gain.linearRampToValueAtTime(0.0001, t + swellDur + 0.03);
+  osc.connect(g);
+  connectWithPan(actx, g, dest, pan, t);
+  osc.start(t); osc.stop(t + swellDur + 0.05);
+  synthBell(actx, dest, t + swellDur + 0.03, freq * semitoneRatio(7), { decay: decay, gain: gainAmt, pan: pan });
+  if (params.rare) scheduleRareFlourish(actx, dest, t + swellDur + 0.03, freq * semitoneRatio(7), { decay: decay, gain: gainAmt, pan: pan, voiceSeed: params.voiceSeed });
+  return { stop: function(){ try { osc.stop(); } catch (e) {} } };
+}
+/* icecream: a soft glassy bell, gentle attack, three cool partials */
+function voiceIcecream(actx, dest, t, params){
+  params = params || {};
+  var freq = params.freq || 440;
+  var decay = (typeof params.decay === "number") ? params.decay : 0.6;
+  var gainAmt = (typeof params.gain === "number") ? params.gain : 0.28;
+  var pan = params.pan;
+  var partials = [1, 2, 3];
+  var partialGains = [1, 0.4, 0.18];
+  var out = actx.createGain();
+  out.gain.setValueAtTime(gainAmt, t);
+  connectWithPan(actx, out, dest, pan, t);
+  var oscs = [];
+  partials.forEach(function(mult, i){
+    var osc = actx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(freq * mult, t);
+    var g = actx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(partialGains[i], t + 0.03);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + Math.max(0.1, decay / (i * 0.3 + 1)));
+    osc.connect(g); g.connect(out);
+    osc.start(t); osc.stop(t + decay + 0.15);
+    oscs.push(osc);
+  });
+  if (params.rare) scheduleRareFlourish(actx, dest, t, freq, { decay: decay, gain: gainAmt, pan: pan, voiceSeed: params.voiceSeed });
+  return { stop: function(){ oscs.forEach(function(o){ try { o.stop(); } catch (e) {} }); } };
+}
+/* flower: a slow soft bloom, a single note opening out like a pad but
+   shorter and lighter than the sky voices */
+function voiceFlower(actx, dest, t, params){
+  params = params || {};
+  var freq = params.freq || 440;
+  var dur = (typeof params.decay === "number") ? params.decay * 1.8 : 0.9;
+  var gainAmt = (typeof params.gain === "number") ? params.gain * 0.8 : 0.24;
+  var pan = params.pan;
+  var pad = synthPad(actx, dest, t, freq, { dur: dur, gain: gainAmt, pan: pan });
+  if (params.rare) scheduleRareFlourish(actx, dest, t + dur * 0.4, freq, { decay: dur * 0.5, gain: gainAmt, pan: pan, voiceSeed: params.voiceSeed });
+  return pad;
+}
+/* cherry: a simple bright glassy plink, two partials, very short */
+function voiceCherry(actx, dest, t, params){
+  params = params || {};
+  var freq = params.freq || 440;
+  var decay = (typeof params.decay === "number") ? params.decay * 0.5 : 0.2;
+  var gainAmt = (typeof params.gain === "number") ? params.gain : 0.32;
+  var pan = params.pan;
+  var out = synthBell(actx, dest, t, freq * 1.5, { decay: decay, gain: gainAmt, pan: pan });
+  if (params.rare) scheduleRareFlourish(actx, dest, t, freq * 1.5, { decay: decay, gain: gainAmt, pan: pan, voiceSeed: params.voiceSeed });
+  return out;
+}
+/* cupcake: bright and sweet, quick attack, a tiny high grace note sprinkled
+   on top */
+function voiceCupcake(actx, dest, t, params){
+  params = params || {};
+  var freq = params.freq || 440;
+  var decay = (typeof params.decay === "number") ? params.decay : 0.28;
+  var gainAmt = (typeof params.gain === "number") ? params.gain : 0.32;
+  var pan = params.pan;
+  var main = synthBell(actx, dest, t, freq, { decay: decay, gain: gainAmt * 0.85, pan: pan });
+  synthPluck(actx, dest, t + 0.03, freq * semitoneRatio(12), { decay: decay * 0.4, gain: gainAmt * 0.35, pan: pan });
+  if (params.rare) scheduleRareFlourish(actx, dest, t, freq, { decay: decay, gain: gainAmt, pan: pan, voiceSeed: params.voiceSeed });
+  return main;
+}
+
+var VOICE_FNS = Object.assign({}, VOICE_FNS_BASE, {
+  heart: voiceHeart, sparkle: voiceSparkle, rainbow: voiceRainbow, star: voiceStar, trex: voiceTrex,
+  rabbit: voiceRabbit, rock: voiceRock, cat: voiceCat, butterfly: voiceButterfly, snail: voiceSnail,
+  bird: voiceBird, sun: voiceSun, cloud: voiceCloud, moon: voiceMoon, bolt: voiceBolt,
+  balloon: voiceBalloon, cake: voiceCake, crown: voiceCrown, present: voicePresent,
+  icecream: voiceIcecream, flower: voiceFlower, cherry: voiceCherry, cupcake: voiceCupcake
+});
 var VOICE_NAMES = Object.keys(VOICE_FNS);
 
 /* ---------------- event voices: every sticker kind, every spell ----------------
-   Family maps to timbre so the sound teaches her what the sticker is:
-   hearts/sweets are soft plucks, sky things are long airy bells, creatures
-   are short chirps and boings, party things are bright pops. */
+   v5: every one of the 23 kinds now has its own named voice (see above),
+   not a shared family. The kind name doubles as its voice name, since the
+   voice IS the kind now: distinctness is enforced by sound.test.js, which
+   fails if any two kinds ever end up pointing at the same function. */
 var STICKER_VOICE_MAP = {
-  heart: "pluck", sparkle: "bell", rainbow: "bell", star: "bell", trex: "boing", rabbit: "chirp", rock: "pluck",
-  cat: "chirp", butterfly: "bell", snail: "pluck", bird: "chirp",
-  sun: "bell", cloud: "bell", moon: "bell", bolt: "pop",
-  balloon: "pop", cake: "pop", crown: "pop", present: "pop",
-  icecream: "pluck", flower: "pluck", cherry: "pluck", cupcake: "pluck"
+  heart: "heart", sparkle: "sparkle", rainbow: "rainbow", star: "star", trex: "trex", rabbit: "rabbit", rock: "rock",
+  cat: "cat", butterfly: "butterfly", snail: "snail", bird: "bird",
+  sun: "sun", cloud: "cloud", moon: "moon", bolt: "bolt",
+  balloon: "balloon", cake: "cake", crown: "crown", present: "present",
+  icecream: "icecream", flower: "flower", cherry: "cherry", cupcake: "cupcake"
 };
 var SPELL_VOICE_MAP = { heartfall: "pluck", pinkout: "pad", fireworks: "pop" };
+/* the rare-variant roll: about one time in eight, deterministic per sticker
+   instance so the same placed sticker always sounds the same on replay and
+   in the export, but two hearts in the same film (different ids) can roll
+   differently, and the same kind in a different film (different seed) can
+   roll differently too. */
+var RARE_VARIANT_CHANCE = 0.125;
+function rollRareVariant(seed, idSeed){
+  return klippRand(seed, idSeed, 7050) < RARE_VARIANT_CHANCE;
+}
 
 var EVENT_POLYPHONY_CAP = 6;
 /* keeps at most `cap` events per exact tick timestamp, dropping the rest
@@ -2925,7 +3426,9 @@ function buildEventScoreFromStickers(film, timeline, seed){
           freq: scaleFreq(seed, degree, 0),
           pan: klippRand(seed, idSeed, 7002) * 1.6 - 0.8,
           decay: 0.35 + klippRand(seed, idSeed, 7003) * 0.35,
-          gain: 0.45
+          gain: 0.24,
+          voiceSeed: idSeed,
+          rare: rollRareVariant(seed, idSeed)
         }
       });
     });
@@ -3878,6 +4381,8 @@ window.KLIPP = {
   buildTrackScore: buildTrackScore,
   buildPlaybackTimeline: buildPlaybackTimeline,
   STICKER_VOICE_MAP: STICKER_VOICE_MAP,
+  rollRareVariant: rollRareVariant,
+  RARE_VARIANT_CHANCE: RARE_VARIANT_CHANCE,
   SPELL_VOICE_MAP: SPELL_VOICE_MAP,
   VOICE_NAMES: VOICE_NAMES,
   VOICE_FNS: VOICE_FNS,
