@@ -154,7 +154,12 @@
     padding:14px;z-index:10;pointer-events:none;
   }
   .studio-topbar > *{pointer-events:auto}
+  /* flex:0 0 auto matters: these live in flex rows, and without it the back
+     button is the one that shrinks when the right hand group grows. It was
+     measured at 19px wide against its 64px height, which squashes the arrow
+     into an unreadable sliver and reads as a blank button. */
   .round-btn{
+    flex:0 0 auto;
     width:var(--tap-min);height:var(--tap-min);border-radius:50%;background:rgba(255,255,255,0.9);
     display:flex;align-items:center;justify-content:center;font-size:22px;color:var(--ink);
     box-shadow:0 4px 12px rgba(0,0,0,0.25);
@@ -162,13 +167,30 @@
   .round-btn.active{background:var(--bloom-deep);color:#fff}
   .top-right-btns{display:flex;gap:10px}
   .icon-btn{display:flex;flex-direction:column;align-items:center;gap:4px}
+  /* the studio bar carries six things (back, magic, music, cards, ghost,
+     send). At the full 64px circle that measured 430px wide on a 412px
+     phone, pushing send off the edge, so this bar alone uses a smaller
+     circle. 52px is still above the 44px tap floor. */
+  .studio-topbar .top-right-btns{gap:8px}
+  .studio-topbar .round-btn{width:52px;height:52px;font-size:19px}
+  .studio-topbar .send-btn{width:52px;height:52px;font-size:18px}
   .icon-btn-label{
     font-size:10px;font-weight:800;color:#fff;letter-spacing:.02em;
     text-shadow:0 1px 3px rgba(0,0,0,0.55);
   }
 
+  /* position:absolute with no offsets at all (the shape this shipped with in
+     v0) leaves the box at its static flow position, which is the TOP of the
+     stage, sitting straight over the back button and the studio icons, and
+     shrink-wrapped to the width of all its thumbnails rather than the screen.
+     On a film of dark frames it reads as rounded rectangles cutting across
+     the buttons and a back arrow that looks blank because a thumbnail is
+     covering it. Pinned above the bottom bar instead, and held to the screen
+     width so the strip scrolls inside itself. */
   .filmstrip-wrap{
-    position:absolute; z-index:8; background:rgba(0,0,0,0.35); backdrop-filter:blur(2px);
+    position:absolute; left:0; right:0; max-width:100%;
+    bottom:calc(128px + env(safe-area-inset-bottom,0px));
+    z-index:8; background:rgba(0,0,0,0.35); backdrop-filter:blur(2px);
   }
   #filmstrip{display:flex;gap:8px;overflow-x:auto;overflow-y:hidden;padding:8px}
   .fs-frame{
@@ -407,6 +429,7 @@
   .export-card .bar-fill{height:100%;width:0%;background:var(--bloom-deep);transition:width .2s}
 
   .send-btn{
+    flex:0 0 auto;
     width:56px;height:56px;border-radius:50%;background:rgba(255,255,255,0.9);
     display:flex;align-items:center;justify-content:center;font-size:20px;color:var(--ink);
     box-shadow:0 4px 12px rgba(0,0,0,0.25);
@@ -504,11 +527,18 @@
       <button id="retry-camera" type="button">try again</button>
     </div>
     <div class="studio-topbar">
-      <button class="round-btn" id="back-to-shelf" type="button" aria-label="back to shelf">&#8592;</button>
+      <div class="icon-btn">
+        <button class="round-btn" id="back-to-shelf" type="button" aria-label="back to shelf">&#8592;</button>
+        <span class="icon-btn-label">back</span>
+      </div>
       <div class="top-right-btns">
         <div class="icon-btn">
           <button class="round-btn" id="wand-btn" type="button" aria-label="magic wand: stickers and spells">&#10024;</button>
           <span class="icon-btn-label">magic</span>
+        </div>
+        <div class="icon-btn">
+          <button class="round-btn" id="music-btn" type="button" aria-label="music: pick a tune for this film">&#127925;</button>
+          <span class="icon-btn-label">music</span>
         </div>
         <div class="icon-btn">
           <button class="round-btn" id="cards-edit" type="button" aria-label="title and end cards: turn on or off, write your own words">&#127916;</button>
@@ -544,7 +574,10 @@
     <canvas id="playback-canvas" width="720" height="1280"></canvas>
     <div id="playback-hearts"></div>
     <div class="playback-top">
-      <button class="round-btn" id="playback-back" type="button" aria-label="back to studio">&#8592;</button>
+      <div class="icon-btn">
+        <button class="round-btn" id="playback-back" type="button" aria-label="back to studio">&#8592;</button>
+        <span class="icon-btn-label">back</span>
+      </div>
       <div class="top-right-btns">
         <div class="icon-btn">
           <button class="round-btn" id="sounds-btn" type="button" aria-label="pick a tune for this film">&#127925;</button>
@@ -3212,17 +3245,21 @@ function renderTracksRow(){
       grid.appendChild(btn);
     });
   }
-  var soundsBtn = $("sounds-btn");
-  if (soundsBtn) soundsBtn.classList.toggle("active", active !== "quiet");
-}
-if ($("sounds-btn")){
-  $("sounds-btn").addEventListener("click", function(){
-    renderTracksRow();
-    $("sounds-sheet").classList.add("open");
-    if (navStack[navStack.length - 1] !== "overlay") navPush("overlay");
-    playInterfaceSound("tap");
+  /* both entry points light up when a tune is on: the playback bar's and the
+     studio's, so she can see at a glance that this film already has music */
+  [$("sounds-btn"), $("music-btn")].forEach(function(btn){
+    if (btn) btn.classList.toggle("active", active !== "quiet");
   });
 }
+function openSoundsSheet(){
+  renderTracksRow();
+  $("sounds-sheet").classList.add("open");
+  if (navStack[navStack.length - 1] !== "overlay") navPush("overlay");
+  playInterfaceSound("tap");
+}
+[$("sounds-btn"), $("music-btn")].forEach(function(btn){
+  if (btn) btn.addEventListener("click", openSoundsSheet);
+});
 if ($("cancel-sounds-sheet")){
   $("cancel-sounds-sheet").addEventListener("click", function(){
     $("sounds-sheet").classList.remove("open");
