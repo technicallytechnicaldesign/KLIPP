@@ -13,7 +13,7 @@
    without bumping this and would never have reached an already-installed
    phone. Confirmed 2026-08-09: unregistering + clearing caches was
    required before the v2 code path executed at all in a fresh tab. */
-var CACHE_NAME = "klipp-shell-v7";
+var CACHE_NAME = "klipp-shell-v10";
 var SHELL_FILES = [
   "./",
   "./index.html",
@@ -37,6 +37,21 @@ self.addEventListener("activate", function(event){
       }));
     }).then(function(){ return self.clients.claim(); })
   );
+});
+
+/* the grown up corner's update row talks to the worker through here.
+   "version" answers with the CACHE_NAME of the worker that is ACTUALLY
+   serving this page, so the version on screen is read off the running
+   worker rather than a constant in index.html that can drift away from
+   it. "skip-waiting" is belt and braces: install already calls
+   skipWaiting, but a worker that somehow ended up parked in "waiting"
+   can still be pushed through from the app. */
+self.addEventListener("message", function(event){
+  var data = event.data || {};
+  if (data.type === "version" && event.ports && event.ports[0]){
+    event.ports[0].postMessage({ version: CACHE_NAME });
+  }
+  if (data.type === "skip-waiting") self.skipWaiting();
 });
 
 self.addEventListener("fetch", function(event){

@@ -360,6 +360,16 @@
     min-height:var(--tap-min);
   }
   .drawer-row:last-of-type{border-bottom:none}
+  .drawer-hint{font-size:12px;color:var(--ink-2);font-weight:600}
+  .drawer-action{
+    background:var(--bloom);color:var(--ink);border-radius:14px;padding:10px 14px;
+    font-size:13px;font-weight:700;min-height:var(--tap-min);white-space:nowrap;
+  }
+  .drawer-action[disabled]{opacity:0.55}
+  .drawer-quiet{
+    display:block;width:100%;background:none;color:var(--ink-2);font-size:12px;
+    text-decoration:underline;padding:10px 4px;min-height:var(--tap-min);
+  }
   .switch{
     width:50px;height:30px;border-radius:16px;background:var(--grid);position:relative;transition:background .15s;
   }
@@ -585,6 +595,12 @@
       <span>little sounds when she taps</span>
       <button class="switch" id="sound-mute-switch" type="button" aria-label="interface sound effects"><span class="knob"></span></button>
     </div>
+    <div class="drawer-row">
+      <span>app version<br><span class="drawer-hint" id="update-version">checking...</span></span>
+      <button class="drawer-action" id="check-update-btn" type="button">check for an update</button>
+    </div>
+    <div class="drawer-sub" id="update-status" style="display:none"></div>
+    <button class="drawer-quiet" id="hard-reload-btn" type="button" style="display:none">still not right? reload the app from scratch</button>
     <div id="drawer-film-list"></div>
     <div class="drawer-sub" id="export-note" style="display:none"></div>
     <button class="drawer-close" id="close-drawer" type="button">close</button>
@@ -3673,6 +3689,7 @@ $("send-btn-playback").addEventListener("click", function(){
   var holdT = null, held = false, downAt = 0;
   function openDrawer(){
     renderGrownupDrawer();
+    if (typeof refreshVersionLabel === "function") refreshVersionLabel();
     $("grownup-drawer").classList.add("open");
     btn.classList.remove("holding");
     state.gearHeld = false;
@@ -3847,6 +3864,10 @@ window.KLIPP = {
   audioTimelineDurationUs: audioTimelineDurationUs,
   audioSampleLengthForDuration: audioSampleLengthForDuration,
   assertAudioVideoSync: assertAudioVideoSync,
+  checkForUpdate: checkForUpdate,
+  hardReloadApp: hardReloadApp,
+  readWorkerVersion: readWorkerVersion,
+  refreshVersionLabel: refreshVersionLabel,
   pickAudioCodec: pickAudioCodec,
   renderFilmAudioOffline: renderFilmAudioOffline,
   encodeAudioBufferToChunks: encodeAudioBufferToChunks,
@@ -3856,9 +3877,166 @@ window.KLIPP = {
 /* ---------------- BOOT ---------------- */
 renderShelf();
 
+/* ---------------- UPDATES (grown up corner) ----------------
+   Why this exists: the browser only re-checks the service worker on a
+   navigation, and by then the page has already rendered from the cached
+   index.html, so a new deploy lands on the NEXT launch. From the outside
+   that reads as "the app just will not update", with nothing on screen to
+   confirm what is actually running. So the drawer shows the version read
+   off the worker that is really serving the page (asked over a
+   MessageChannel, never a constant in this file, which could drift from
+   sw.js and lie), and offers a button that forces the check and swaps in
+   the new worker there and then.
+
+   Reloading is only ever done on a deliberate tap. Nothing here reloads
+   the app by itself: she could be in the middle of filming. */
+var swRegistration = null;
+var swReloading = false;
+
+function setUpdateStatus(msg){
+  var el = $("update-status");
+  if (!el) return;
+  if (msg){ el.textContent = msg; el.style.display = "block"; }
+  else { el.textContent = ""; el.style.display = "none"; }
+}
+
+/* ask the running worker what it is, so the version on screen is measured
+   rather than declared. Resolves null if nothing answers. */
+function readWorkerVersion(){
+  return new Promise(function(resolve){
+    var ctrl = navigator.serviceWorker && navigator.serviceWorker.controller;
+    if (!ctrl || typeof MessageChannel === "undefined"){ resolve(null); return; }
+    var settled = false;
+    var channel = new MessageChannel();
+    channel.port1.onmessage = function(event){
+      if (settled) return;
+      settled = true;
+      resolve((event.data && event.data.version) || null);
+    };
+    setTimeout(function(){ if (!settled){ settled = true; resolve(null); } }, 2000);
+    try { ctrl.postMessage({ type: "version" }, [channel.port2]); }
+    catch (e){ if (!settled){ settled = true; resolve(null); } }
+  });
+}
+
+function refreshVersionLabel(){
+  var el = $("update-version");
+  if (!el) return Promise.resolve(null);
+  return readWorkerVersion().then(function(version){
+    /* no answer means no worker is controlling this page yet, which is the
+       normal state for the very first visit and for the one session right
+       after a reload-from-scratch: the fresh worker installs and takes over
+       from the next launch. Nothing is broken, so the copy does not say it
+       is. controllerchange re-runs this the moment it does take over. */
+    el.textContent = version ? ("running " + version) : "getting ready, this will show next time you open the app";
+    return version;
+  });
+}
+
+function applyNewWorker(worker){
+  if (!worker) return;
+  try { worker.postMessage({ type: "skip-waiting" }); } catch (e) {}
+}
+
+/* deliberate, grown up only: throw away the cached shell and start clean.
+   Deletes caches ONLY. Films live in IndexedDB and are never touched here,
+   which is why the copy can promise they stay. */
+function hardReloadApp(){
+  setUpdateStatus("clearing the saved copy, her films stay safe...");
+  var work = [];
+  if (typeof caches !== "undefined" && caches.keys){
+    work.push(caches.keys().then(function(names){
+      return Promise.all(names.map(function(name){ return caches.delete(name); }));
+    }).catch(function(){}));
+  }
+  if (swRegistration && swRegistration.unregister){
+    work.push(swRegistration.unregister().catch(function(){}));
+  }
+  return Promise.all(work).then(function(){
+    swReloading = true;
+    window.location.reload();
+  });
+}
+
+function checkForUpdate(){
+  var btn = $("check-update-btn");
+  if (!("serviceWorker" in navigator)){
+    setUpdateStatus("this browser is not keeping its own copy, so closing and opening the app is enough.");
+    return Promise.resolve("unsupported");
+  }
+  if (btn) btn.disabled = true;
+  setUpdateStatus("looking for a new version...");
+
+  var done = function(status, msg, showHard){
+    if (btn) btn.disabled = false;
+    setUpdateStatus(msg);
+    var hard = $("hard-reload-btn");
+    if (hard) hard.style.display = showHard ? "block" : "none";
+    return status;
+  };
+
+  return navigator.serviceWorker.ready.then(function(reg){
+    swRegistration = reg;
+    return reg.update().then(function(){ return reg; });
+  }).then(function(reg){
+    var incoming = reg.installing || reg.waiting;
+    if (!incoming){
+      return refreshVersionLabel().then(function(){
+        return done("current", "this is the newest version.", true);
+      });
+    }
+    setUpdateStatus("a new version is coming down, hold on...");
+    return new Promise(function(resolve){
+      var finished = false;
+      var swap = function(){
+        if (finished) return;
+        finished = true;
+        swReloading = true;
+        setUpdateStatus("got it, starting the new one...");
+        window.location.reload();
+        resolve(done("updated", "got it, starting the new one...", false));
+      };
+      navigator.serviceWorker.addEventListener("controllerchange", function(){
+        if (!swReloading) swap();
+      });
+      incoming.addEventListener("statechange", function(){
+        if (incoming.state === "activated") swap();
+        if (incoming.state === "installed") applyNewWorker(incoming);
+      });
+      if (incoming.state === "installed") applyNewWorker(incoming);
+      setTimeout(function(){
+        if (finished) return;
+        finished = true;
+        resolve(done("timeout", "that is taking a while. close the app completely and open it again.", true));
+      }, 20000);
+    });
+  }).catch(function(){
+    return done("error", "could not reach the internet to look. try again when there is signal.", true);
+  });
+}
+
+if ($("check-update-btn")){
+  $("check-update-btn").addEventListener("click", function(){ checkForUpdate(); });
+}
+if ($("hard-reload-btn")){
+  $("hard-reload-btn").addEventListener("click", function(){ hardReloadApp(); });
+}
+
 if ("serviceWorker" in navigator){
   window.addEventListener("load", function(){
-    navigator.serviceWorker.register("sw.js").catch(function(){ /* app still works with no worker */ });
+    /* updateViaCache "none" so the worker script itself is never served from
+       the HTTP cache: that is the one file whose bytes decide whether an
+       update is even noticed. */
+    navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).then(function(reg){
+      swRegistration = reg;
+      refreshVersionLabel();
+      /* a quiet check on boot, so the drawer already knows the answer by the
+         time a grown up opens it. Never reloads on its own. */
+      try { reg.update(); } catch (e) {}
+    }).catch(function(){ /* app still works with no worker */ });
+    navigator.serviceWorker.addEventListener("controllerchange", function(){
+      refreshVersionLabel();
+    });
   });
 }
 
