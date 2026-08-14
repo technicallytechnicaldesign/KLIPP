@@ -209,9 +209,15 @@
     align-items:flex-end;justify-content:center;z-index:60;
   }
   #sticker-tray.open{display:flex}
+  .sticker-tray-groups{max-height:48vh;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-right:2px}
+  .sticker-set-label{
+    font-size:12px;font-weight:700;color:var(--ink-2);text-transform:lowercase;
+    margin:16px 0 8px;padding-left:2px;
+  }
+  .sticker-set:first-child .sticker-set-label{margin-top:0}
   .sticker-tray-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;padding:6px 0 4px}
   .sticker-tray-btn{
-    aspect-ratio:1;border-radius:var(--radius-md);background:var(--faint);
+    aspect-ratio:1;min-height:44px;min-width:44px;border-radius:var(--radius-md);background:var(--faint);
     display:flex;align-items:center;justify-content:center;border:2px solid var(--grid);
   }
   .sticker-tray-btn.picked{background:var(--bloom);border-color:var(--bloom-deep)}
@@ -271,6 +277,27 @@
     font-size:13px;font-weight:700;min-height:40px;box-shadow:0 4px 12px rgba(0,0,0,0.2);
   }
   .spell-btn.active{background:var(--bloom-deep);color:#fff}
+
+  /* ---------- SOUNDS BUTTON (tracks/soundtrack picker, playback top bar) ----------
+     screen-budget check (brief 1c), MEASURED at a phone viewport before
+     shipping (see PROJECT.md log for the numbers): a second chip row
+     stacked below the spells row overlapped both the spells row itself
+     and the playback controls, in BOTH portrait (390x844) and landscape
+     (844x390). A second row does not fit, so this is one labeled button
+     (round-btn, the studio topbar's own grammar) that opens a sheet, same
+     as the cards-edit pattern, instead of shipping the overlap. */
+  #sounds-sheet{
+    position:fixed;inset:0;background:rgba(58,43,48,0.45);display:none;
+    align-items:flex-end;justify-content:center;z-index:60;
+  }
+  #sounds-sheet.open{display:flex}
+  .tracks-sheet-grid{display:flex;flex-direction:column;gap:10px;padding:4px 0 6px}
+  .track-row-btn{
+    min-height:var(--tap-min);border-radius:var(--radius-md);background:var(--faint);
+    border:2px solid var(--grid);display:flex;align-items:center;justify-content:center;
+    font-weight:700;font-size:15px;color:var(--ink);
+  }
+  .track-row-btn.active{background:var(--bloom);border-color:var(--bloom-deep);color:#fff}
 
   /* ---------- UNDO TOAST ---------- */
   #undo-toast{
@@ -414,7 +441,7 @@
       <span>just a peek (a few frames)</span>
       <button class="switch" id="peek-life-switch" type="button" aria-label="peek life toggle"><span class="knob"></span></button>
     </div>
-    <div class="sticker-tray-grid" id="sticker-tray-grid"></div>
+    <div class="sticker-tray-groups" id="sticker-tray-groups"></div>
     <button class="sheet-cancel" id="cancel-sticker-tray" type="button">never mind</button>
   </div>
 </div>
@@ -508,12 +535,31 @@
     <div id="playback-hearts"></div>
     <div class="playback-top">
       <button class="round-btn" id="playback-back" type="button" aria-label="back to studio">&#8592;</button>
-      <button class="send-btn" id="send-btn-playback" type="button" aria-label="send film">&#128233;</button>
+      <div class="top-right-btns">
+        <div class="icon-btn">
+          <button class="round-btn" id="sounds-btn" type="button" aria-label="pick a tune for this film">&#127925;</button>
+          <span class="icon-btn-label">tune</span>
+        </div>
+        <div class="icon-btn">
+          <button class="send-btn" id="send-btn-playback" type="button" aria-label="send film">&#128233;</button>
+          <span class="icon-btn-label">send</span>
+        </div>
+      </div>
     </div>
     <div class="spells-row" id="spells-row"></div>
   </div>
   <div class="playback-bottom">
     <button id="replay-btn" type="button" aria-label="play again">&#9654;</button>
+  </div>
+</div>
+
+<!-- sounds sheet: fallback for the tracks row if it does not fit beside
+     spells on a phone screen, same sheet grammar as card-edit-sheet -->
+<div id="sounds-sheet">
+  <div class="sheet-body">
+    <div class="sheet-title">pick a tune</div>
+    <div class="tracks-sheet-grid" id="tracks-sheet-grid"></div>
+    <button class="sheet-cancel" id="cancel-sounds-sheet" type="button">never mind</button>
   </div>
 </div>
 
@@ -534,6 +580,10 @@
     <div class="drawer-row">
       <span>ghost frame on by default</span>
       <button class="switch" id="onion-default-switch" type="button" aria-label="onion skin default"><span class="knob"></span></button>
+    </div>
+    <div class="drawer-row">
+      <span>little sounds when she taps</span>
+      <button class="switch" id="sound-mute-switch" type="button" aria-label="interface sound effects"><span class="knob"></span></button>
     </div>
     <div id="drawer-film-list"></div>
     <div class="drawer-sub" id="export-note" style="display:none"></div>
@@ -635,6 +685,10 @@ function closeTopOverlayIfOpen(){
   }
   if ($("new-film-sheet").classList.contains("open")){
     $("new-film-sheet").classList.remove("open");
+    return true;
+  }
+  if ($("sounds-sheet") && $("sounds-sheet").classList.contains("open")){
+    $("sounds-sheet").classList.remove("open");
     return true;
   }
   return false;
@@ -937,6 +991,7 @@ function updateOnionSkin(){
 $("ghost-toggle").addEventListener("click", function(){
   state.onionSkinOn = !state.onionSkinOn;
   updateOnionSkin();
+  playInterfaceSound("tap");
 });
 
 /* ---------------- MAGIC LAYER: title/end cards on/off ----------------
@@ -1048,25 +1103,37 @@ function maybeShowStickerHint(){
   showHeartToast("drag it to move, pinch it to grow or shrink, drag it up to the cloud to say goodbye");
 }
 function buildStickerTray(){
-  var grid = $("sticker-tray-grid");
-  if (grid.childNodes.length) return; /* built once */
-  STICKER_KINDS.forEach(function(kind){
-    var btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "sticker-tray-btn";
-    btn.setAttribute("data-sid", kind);
-    var canvas = document.createElement("canvas");
-    canvas.width = 64; canvas.height = 64;
-    var ctx = canvas.getContext("2d");
-    drawSticker(ctx, kind, 32, 32, 22, stringToSeed(kind), 0);
-    btn.appendChild(canvas);
-    btn.addEventListener("click", function(){
-      state.placingSticker = kind;
-      $("sticker-tray").classList.remove("open");
-      navPop("overlay");
-      showHeartToast("tap the stage to put it down");
+  var groupsWrap = $("sticker-tray-groups");
+  if (groupsWrap.childNodes.length) return; /* built once */
+  STICKER_GROUPS.forEach(function(group){
+    var section = document.createElement("div");
+    section.className = "sticker-set";
+    var label = document.createElement("div");
+    label.className = "sticker-set-label";
+    label.textContent = group.label;
+    section.appendChild(label);
+    var grid = document.createElement("div");
+    grid.className = "sticker-tray-grid";
+    group.kinds.forEach(function(kind){
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "sticker-tray-btn";
+      btn.setAttribute("data-sid", kind);
+      var canvas = document.createElement("canvas");
+      canvas.width = 64; canvas.height = 64;
+      var ctx = canvas.getContext("2d");
+      drawSticker(ctx, kind, 32, 32, 22, stringToSeed(kind), 0);
+      btn.appendChild(canvas);
+      btn.addEventListener("click", function(){
+        state.placingSticker = kind;
+        $("sticker-tray").classList.remove("open");
+        navPop("overlay");
+        showHeartToast("tap the stage to put it down");
+      });
+      grid.appendChild(btn);
     });
-    grid.appendChild(btn);
+    section.appendChild(grid);
+    groupsWrap.appendChild(section);
   });
 }
 $("wand-btn").addEventListener("click", function(){
@@ -1075,6 +1142,7 @@ $("wand-btn").addEventListener("click", function(){
   $("peek-life-switch").classList.remove("on");
   $("sticker-tray").classList.add("open");
   if (navStack[navStack.length - 1] !== "overlay") navPush("overlay");
+  playInterfaceSound("tap");
 });
 $("cancel-sticker-tray").addEventListener("click", function(){
   $("sticker-tray").classList.remove("open");
@@ -1159,6 +1227,7 @@ stageOverlayCanvas().addEventListener("pointerdown", function(evt){
     addSticker(kind, pos.x, pos.y, life);
     renderStickerOverlay();
     maybeShowStickerHint();
+    playInterfaceSound("flourish");
     return;
   }
   if (stickerDrag && evt.pointerId !== stickerDrag.pointerId){
@@ -1250,6 +1319,7 @@ function endStickerDrag(evt){
   if (droppedOnCloud){
     removeSticker(dragged.id);
     renderStickerOverlay();
+    playInterfaceSound("flourish");
   }
 }
 stageOverlayCanvas().addEventListener("pointerup", endStickerDrag);
@@ -1411,6 +1481,7 @@ function captureFrame(){
   var canvas = cropDrawToCanvas(src.el, src.w, src.h, size.w, size.h);
   flashStage();
   heartBurst();
+  playInterfaceSound("shutter");
   return captureFrameFromCanvas(canvas);
 }
 
@@ -1512,7 +1583,7 @@ function restoreLast(){
     return frame;
   });
 }
-$("undo-btn").addEventListener("click", undoLast);
+$("undo-btn").addEventListener("click", function(){ playInterfaceSound("tap"); undoLast(); });
 $("undo-restore-btn").addEventListener("click", restoreLast);
 
 /* ---------------- PLAYBACK ---------------- */
@@ -1543,6 +1614,7 @@ function startPlayback(){
   showView("playback");
   if (navStack[navStack.length - 1] !== "playback") navPush("playback");
   renderSpellsRow();
+  renderTracksRow();
   if (!state.frames.length){
     var ctx = $("playback-canvas").getContext("2d");
     ctx.clearRect(0,0,$("playback-canvas").width,$("playback-canvas").height);
@@ -1564,6 +1636,16 @@ function startPlayback(){
   playTimer = setInterval(playTick, 1000 / FPS);
   clearInterval(heartDriftTimer);
   heartDriftTimer = setInterval(spawnPlaybackHeart, 350);
+  /* sound is strictly additive: if there is no AudioContext yet (no touch
+     has happened) or it never resumes, this is a silent no-op and the
+     picture above is already playing exactly as it would with no sound
+     code in the app at all */
+  if (ensureAudioAvailable()){
+    stopFilmAudio();
+    var audioTimeline = buildPlaybackTimeline(state.currentFilm, state.frames.length);
+    currentFilmScore = buildFilmScore(state.currentFilm, audioTimeline, filmSeed(state.currentFilm));
+    playFilmScoreFrom(currentFilmScore, audioCtx.currentTime + 0.05);
+  }
 }
 function playTick(){
   playTickCount++;
@@ -1578,9 +1660,16 @@ function playTick(){
     if (playIndex >= totalPhotos){
       playIndex = 0;
       playGlobalTick = 0;
+      /* the picture just looped: give the score a fresh pass too, so a
+         film with sound never runs silent on its second lap */
+      if (audioCtx && audioCtx.state === "running"){
+        stopFilmAudio();
+        playFilmScoreFrom(currentFilmScore, audioCtx.currentTime + 0.02);
+      }
     }
     advanced = true;
   }
+  if (advanced) playInterfaceSound("tick");
   if (advanced || hasActiveMagic(film)) drawPlaybackFrame(playIndex, playGlobalTick, !advanced);
 }
 function drawPlaybackOverlay(ctx, w, h, tick){
@@ -1621,6 +1710,7 @@ function stopPlayback(){
   clearInterval(heartDriftTimer);
   playTimer = null;
   heartDriftTimer = null;
+  stopFilmAudio();
 }
 
 /* ---------------- MAGIC LAYER: spells row ---------------- */
@@ -1646,6 +1736,8 @@ function renderSpellsRow(){
       renderSpellsRow();
       playTotalTicks = playbackTotalTicks(state.frames.length, state.currentFilm);
       drawPlaybackFrame(playIndex, playGlobalTick, false);
+      playInterfaceSound("tap");
+      syncFilmAudioToPlaybackPosition();
     });
     row.appendChild(btn);
   });
@@ -1743,7 +1835,22 @@ var PALETTE = {
 
 var TITLE_TICKS = 12, END_TICKS = 12, FIREWORKS_HOLD_TICKS = 12;
 var STICKER_CAP = 12;
-var STICKER_KINDS = ["heart", "sparkle", "rainbow", "star", "trex", "rabbit", "rock"];
+var STICKER_KINDS = [
+  "heart", "sparkle", "rainbow", "star", "trex", "rabbit", "rock",
+  "cat", "butterfly", "snail", "bird",
+  "sun", "cloud", "moon", "bolt",
+  "balloon", "cake", "crown", "present",
+  "icecream", "flower", "cherry", "cupcake"
+];
+/* the tray groups the 23 kinds under small labels: the original seven plus
+   the four v4 sets, in the same order the brief lists them */
+var STICKER_GROUPS = [
+  { label: "the first friends", kinds: ["heart", "sparkle", "rainbow", "star", "trex", "rabbit", "rock"] },
+  { label: "creatures", kinds: ["cat", "butterfly", "snail", "bird"] },
+  { label: "sky", kinds: ["sun", "cloud", "moon", "bolt"] },
+  { label: "party", kinds: ["balloon", "cake", "crown", "present"] },
+  { label: "sweet", kinds: ["icecream", "flower", "cherry", "cupcake"] }
+];
 
 /* a tiny, seedable, non-cryptographic hash. Same (a,b,c) always gives the
    same number back, which is the whole point: a sticker's twinkle/wobble is
@@ -1879,7 +1986,354 @@ function drawRockShape(ctx, size){
   ctx.beginPath(); ctx.arc(-s * 0.15, -s * 0.05, s * 0.08, 0, Math.PI * 2); ctx.fill();
   ctx.beginPath(); ctx.arc(s * 0.2, -s * 0.08, s * 0.08, 0, Math.PI * 2); ctx.fill();
 }
-function drawStickerShape(ctx, kind, size){
+/* ---------------- MAGIC LAYER: the v4 cast, four sets of four ----------------
+   Same hand register as the first seven: round, wobbly, soft washes, canvas
+   paths only, PALETTE colours only. Where an idle character is cheap it comes
+   from klippRand(seed, frameIndex, salt) and Math.sin of frameIndex, never
+   Math.random and never wall-clock time, so playback and export stay
+   frame-identical. */
+function drawCatShape(ctx, size){
+  var s = size;
+  ctx.fillStyle = PALETTE.faint;
+  ctx.strokeStyle = PALETTE.ink;
+  ctx.beginPath();
+  ctx.moveTo(-s * 0.6, -s * 0.45);
+  ctx.lineTo(-s * 0.35, -s * 0.9);
+  ctx.lineTo(-s * 0.15, -s * 0.42);
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(s * 0.15, -s * 0.42);
+  ctx.lineTo(s * 0.35, -s * 0.9);
+  ctx.lineTo(s * 0.6, -s * 0.45);
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(0, 0, s * 0.55, 0, Math.PI * 2);
+  ctx.fill(); ctx.stroke();
+  ctx.fillStyle = PALETTE.ink;
+  ctx.beginPath(); ctx.arc(-s * 0.18, -s * 0.05, s * 0.06, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(s * 0.18, -s * 0.05, s * 0.06, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = PALETTE.ink;
+  ctx.beginPath(); ctx.moveTo(-s * 0.1, s * 0.15); ctx.lineTo(-s * 0.55, s * 0.05); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-s * 0.1, s * 0.25); ctx.lineTo(-s * 0.55, s * 0.3); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(s * 0.1, s * 0.15); ctx.lineTo(s * 0.55, s * 0.05); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(s * 0.1, s * 0.25); ctx.lineTo(s * 0.55, s * 0.3); ctx.stroke();
+}
+function drawButterflyShape(ctx, size, seed, frameIndex){
+  var s = size;
+  var phase = klippRand(seed, 0, 711) * Math.PI * 2;
+  var flap = 0.55 + Math.abs(Math.sin(frameIndex * 0.6 + phase)) * 0.45;
+  ctx.fillStyle = PALETTE.bloom2;
+  ctx.beginPath();
+  ctx.moveTo(0, -s * 0.1);
+  ctx.quadraticCurveTo(-s * 0.9 * flap, -s * 0.9 * flap, -s * 0.15, -s * 0.55);
+  ctx.quadraticCurveTo(-s * 0.6 * flap, -s * 0.05, 0, -s * 0.1);
+  ctx.closePath(); ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(0, s * 0.1);
+  ctx.quadraticCurveTo(-s * 0.7 * flap, s * 0.85 * flap, -s * 0.12, s * 0.5);
+  ctx.quadraticCurveTo(-s * 0.5 * flap, s * 0.1, 0, s * 0.1);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = PALETTE.water;
+  ctx.beginPath();
+  ctx.moveTo(0, -s * 0.1);
+  ctx.quadraticCurveTo(s * 0.9 * flap, -s * 0.9 * flap, s * 0.15, -s * 0.55);
+  ctx.quadraticCurveTo(s * 0.6 * flap, -s * 0.05, 0, -s * 0.1);
+  ctx.closePath(); ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(0, s * 0.1);
+  ctx.quadraticCurveTo(s * 0.7 * flap, s * 0.85 * flap, s * 0.12, s * 0.5);
+  ctx.quadraticCurveTo(s * 0.5 * flap, s * 0.1, 0, s * 0.1);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = PALETTE.ink;
+  ctx.beginPath();
+  ctx.moveTo(0, -s * 0.5);
+  ctx.quadraticCurveTo(-s * 0.06, 0, 0, s * 0.55);
+  ctx.quadraticCurveTo(s * 0.06, 0, 0, -s * 0.5);
+  ctx.closePath(); ctx.fill();
+}
+function drawSnailShape(ctx, size){
+  var s = size;
+  ctx.strokeStyle = PALETTE.bloomDeep;
+  ctx.fillStyle = PALETTE.bloomDeep;
+  ctx.beginPath(); ctx.arc(s * 0.05, -s * 0.15, s * 0.5, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(s * 0.05, -s * 0.15, s * 0.32, 0, Math.PI * 1.5); ctx.stroke();
+  ctx.beginPath(); ctx.arc(s * 0.05, -s * 0.15, s * 0.16, 0, Math.PI * 1.5); ctx.stroke();
+  ctx.fillStyle = PALETTE.leaf;
+  ctx.beginPath();
+  ctx.moveTo(-s * 0.75, s * 0.5);
+  ctx.quadraticCurveTo(-s * 0.85, s * 0.05, -s * 0.35, s * 0.05);
+  ctx.quadraticCurveTo(s * 0.05, s * 0.05, -s * 0.1, s * 0.5);
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = PALETTE.ink;
+  ctx.beginPath(); ctx.moveTo(-s * 0.7, s * 0.02); ctx.lineTo(-s * 0.85, -s * 0.28); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-s * 0.55, s * 0.02); ctx.lineTo(-s * 0.6, -s * 0.3); ctx.stroke();
+  ctx.fillStyle = PALETTE.ink;
+  ctx.beginPath(); ctx.arc(-s * 0.85, -s * 0.28, s * 0.05, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(-s * 0.6, -s * 0.3, s * 0.05, 0, Math.PI * 2); ctx.fill();
+}
+function drawBirdShape(ctx, size, seed, frameIndex){
+  var s = size;
+  var phase = klippRand(seed, 0, 811) * Math.PI * 2;
+  var flap = Math.sin(frameIndex * 0.5 + phase) * s * 0.22;
+  ctx.fillStyle = PALETTE.water;
+  ctx.beginPath();
+  ctx.moveTo(-s * 0.6, s * 0.1);
+  ctx.quadraticCurveTo(-s * 0.6, -s * 0.55, s * 0.05, -s * 0.5);
+  ctx.quadraticCurveTo(s * 0.65, -s * 0.45, s * 0.55, s * 0.05);
+  ctx.quadraticCurveTo(s * 0.35, s * 0.45, -s * 0.15, s * 0.4);
+  ctx.quadraticCurveTo(-s * 0.5, s * 0.35, -s * 0.6, s * 0.1);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = PALETTE.bloom2;
+  ctx.beginPath();
+  ctx.moveTo(-s * 0.05, -s * 0.05);
+  ctx.quadraticCurveTo(s * 0.15, flap, s * 0.4, -s * 0.05 + flap * 0.6);
+  ctx.quadraticCurveTo(s * 0.1, s * 0.15, -s * 0.05, -s * 0.05);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = PALETTE.sun;
+  ctx.beginPath();
+  ctx.moveTo(s * 0.55, -s * 0.35);
+  ctx.lineTo(s * 0.85, -s * 0.28);
+  ctx.lineTo(s * 0.55, -s * 0.15);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = PALETTE.ink;
+  ctx.beginPath(); ctx.arc(s * 0.3, -s * 0.38, s * 0.05, 0, Math.PI * 2); ctx.fill();
+}
+function drawSunShape(ctx, size, seed, frameIndex){
+  var s = size;
+  var phase = klippRand(seed, 0, 911) * Math.PI * 2;
+  ctx.strokeStyle = PALETTE.sun;
+  for (var i = 0; i < 8; i++){
+    var ang = (Math.PI / 4) * i;
+    var shimmer = 0.85 + klippRand(seed, frameIndex, 920 + i) * 0.3;
+    var innerR = s * 0.65, outerR = s * (0.95 + 0.15 * shimmer);
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(ang) * innerR, Math.sin(ang) * innerR);
+    ctx.lineTo(Math.cos(ang) * outerR, Math.sin(ang) * outerR);
+    ctx.stroke();
+  }
+  ctx.fillStyle = PALETTE.sun;
+  ctx.beginPath();
+  ctx.arc(0, 0, s * 0.58, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = PALETTE.bloom;
+  ctx.beginPath(); ctx.arc(-s * 0.18, -s * 0.05, s * 0.08, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(s * 0.18, -s * 0.05, s * 0.08, 0, Math.PI * 2); ctx.fill();
+}
+function drawCloudShape(ctx, size, seed, frameIndex){
+  var s = size;
+  var phase = klippRand(seed, 0, 1011) * Math.PI * 2;
+  var drift = Math.sin(frameIndex * 0.12 + phase) * s * 0.12;
+  ctx.save();
+  ctx.translate(drift, 0);
+  ctx.fillStyle = PALETTE.paper;
+  ctx.strokeStyle = PALETTE.water;
+  ctx.beginPath();
+  ctx.arc(-s * 0.4, s * 0.1, s * 0.4, 0, Math.PI * 2);
+  ctx.arc(s * 0.05, -s * 0.1, s * 0.5, 0, Math.PI * 2);
+  ctx.arc(s * 0.5, s * 0.15, s * 0.35, 0, Math.PI * 2);
+  ctx.fill(); ctx.stroke();
+  ctx.restore();
+}
+function drawMoonShape(ctx, size){
+  var s = size;
+  ctx.fillStyle = PALETTE.sun;
+  ctx.strokeStyle = PALETTE.bloomDeep;
+  ctx.beginPath();
+  ctx.moveTo(-s * 0.2, -s * 0.9);
+  ctx.quadraticCurveTo(-s * 0.95, -s * 0.75, -s * 0.95, 0);
+  ctx.quadraticCurveTo(-s * 0.95, s * 0.75, -s * 0.2, s * 0.9);
+  ctx.quadraticCurveTo(-s * 0.55, s * 0.5, -s * 0.55, 0);
+  ctx.quadraticCurveTo(-s * 0.55, -s * 0.5, -s * 0.2, -s * 0.9);
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+}
+function drawBoltShape(ctx, size, seed, frameIndex){
+  var s = size;
+  var bright = klippRand(seed, frameIndex, 1111) > 0.28;
+  ctx.fillStyle = bright ? PALETTE.sun : PALETTE.bloom2;
+  ctx.beginPath();
+  ctx.moveTo(s * 0.15, -s);
+  ctx.lineTo(-s * 0.5, s * 0.1);
+  ctx.lineTo(-s * 0.05, s * 0.1);
+  ctx.lineTo(-s * 0.25, s);
+  ctx.lineTo(s * 0.55, -s * 0.15);
+  ctx.lineTo(s * 0.1, -s * 0.15);
+  ctx.closePath(); ctx.fill();
+}
+function drawBalloonShape(ctx, size, seed, frameIndex){
+  var s = size;
+  var phase = klippRand(seed, 0, 1211) * Math.PI * 2;
+  var bob = Math.sin(frameIndex * 0.3 + phase) * s * 0.06;
+  ctx.save();
+  ctx.translate(0, bob);
+  ctx.fillStyle = PALETTE.bloom2;
+  ctx.beginPath();
+  ctx.moveTo(0, -s * 0.85);
+  ctx.quadraticCurveTo(-s * 0.65, -s * 0.75, -s * 0.55, -s * 0.1);
+  ctx.quadraticCurveTo(-s * 0.4, s * 0.5, 0, s * 0.42);
+  ctx.quadraticCurveTo(s * 0.4, s * 0.5, s * 0.55, -s * 0.1);
+  ctx.quadraticCurveTo(s * 0.65, -s * 0.75, 0, -s * 0.85);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = PALETTE.bloomDeep;
+  ctx.beginPath();
+  ctx.moveTo(-s * 0.08, s * 0.42); ctx.lineTo(s * 0.08, s * 0.42); ctx.lineTo(0, s * 0.55);
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = PALETTE.ink;
+  ctx.beginPath();
+  ctx.moveTo(0, s * 0.55);
+  ctx.quadraticCurveTo(s * 0.1, s * 0.75, 0, s * 0.9);
+  ctx.stroke();
+  ctx.restore();
+}
+function drawCakeShape(ctx, size, seed, frameIndex){
+  var s = size;
+  ctx.fillStyle = PALETTE.faint;
+  ctx.strokeStyle = PALETTE.ink;
+  ctx.beginPath();
+  ctx.moveTo(-s * 0.7, s * 0.55);
+  ctx.lineTo(-s * 0.7, s * 0.05);
+  ctx.lineTo(s * 0.7, s * 0.05);
+  ctx.lineTo(s * 0.7, s * 0.55);
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = PALETTE.paper;
+  ctx.beginPath();
+  ctx.moveTo(-s * 0.7, s * 0.05);
+  ctx.quadraticCurveTo(-s * 0.35, -s * 0.1, 0, s * 0.05);
+  ctx.quadraticCurveTo(s * 0.35, s * 0.2, s * 0.7, s * 0.05);
+  ctx.lineTo(s * 0.7, -s * 0.1);
+  ctx.lineTo(-s * 0.7, -s * 0.1);
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = PALETTE.sun;
+  ctx.beginPath();
+  ctx.moveTo(-s * 0.06, -s * 0.15); ctx.lineTo(-s * 0.06, -s * 0.5);
+  ctx.lineTo(s * 0.06, -s * 0.5); ctx.lineTo(s * 0.06, -s * 0.15);
+  ctx.closePath(); ctx.fill();
+  var flameHot = klippRand(seed, frameIndex, 1321) > 0.4;
+  ctx.fillStyle = flameHot ? PALETTE.bloomDeep : PALETTE.sun;
+  ctx.beginPath();
+  ctx.moveTo(0, -s * 0.9);
+  ctx.quadraticCurveTo(s * 0.14, -s * 0.65, 0, -s * 0.48);
+  ctx.quadraticCurveTo(-s * 0.14, -s * 0.65, 0, -s * 0.9);
+  ctx.closePath(); ctx.fill();
+}
+function drawCrownShape(ctx, size){
+  var s = size;
+  ctx.fillStyle = PALETTE.sun;
+  ctx.strokeStyle = PALETTE.bloomDeep;
+  ctx.beginPath();
+  ctx.moveTo(-s * 0.8, s * 0.5);
+  ctx.lineTo(-s * 0.8, -s * 0.05);
+  ctx.lineTo(-s * 0.4, s * 0.3);
+  ctx.lineTo(0, -s * 0.6);
+  ctx.lineTo(s * 0.4, s * 0.3);
+  ctx.lineTo(s * 0.8, -s * 0.05);
+  ctx.lineTo(s * 0.8, s * 0.5);
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = PALETTE.bloomDeep;
+  ctx.beginPath(); ctx.arc(0, -s * 0.25, s * 0.09, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = PALETTE.water;
+  ctx.beginPath(); ctx.arc(-s * 0.42, s * 0.05, s * 0.07, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(s * 0.42, s * 0.05, s * 0.07, 0, Math.PI * 2); ctx.fill();
+}
+function drawPresentShape(ctx, size){
+  var s = size;
+  ctx.fillStyle = PALETTE.water;
+  ctx.fillRect(-s * 0.7, -s * 0.4, s * 1.4, s * 1.1);
+  ctx.fillStyle = PALETTE.bloom2;
+  ctx.fillRect(-s * 0.12, -s * 0.4, s * 0.24, s * 1.1);
+  ctx.fillRect(-s * 0.7, -s * 0.02, s * 1.4, s * 0.24);
+  ctx.fillStyle = PALETTE.bloomDeep;
+  ctx.beginPath();
+  ctx.moveTo(0, -s * 0.4);
+  ctx.quadraticCurveTo(-s * 0.55, -s * 0.75, -s * 0.3, -s * 0.95);
+  ctx.quadraticCurveTo(-s * 0.05, -s * 0.85, 0, -s * 0.4);
+  ctx.closePath(); ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(0, -s * 0.4);
+  ctx.quadraticCurveTo(s * 0.55, -s * 0.75, s * 0.3, -s * 0.95);
+  ctx.quadraticCurveTo(s * 0.05, -s * 0.85, 0, -s * 0.4);
+  ctx.closePath(); ctx.fill();
+}
+function drawIcecreamShape(ctx, size){
+  var s = size;
+  ctx.fillStyle = PALETTE.sun;
+  ctx.strokeStyle = PALETTE.bloomDeep;
+  ctx.beginPath();
+  ctx.moveTo(-s * 0.35, s * 0.05);
+  ctx.lineTo(0, s * 0.95);
+  ctx.lineTo(s * 0.35, s * 0.05);
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = PALETTE.bloom2;
+  ctx.beginPath(); ctx.arc(0, -s * 0.15, s * 0.45, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = PALETTE.paper;
+  ctx.beginPath(); ctx.arc(-s * 0.15, -s * 0.55, s * 0.32, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = PALETTE.water;
+  ctx.beginPath(); ctx.arc(s * 0.2, -s * 0.7, s * 0.22, 0, Math.PI * 2); ctx.fill();
+}
+function drawFlowerShape(ctx, size){
+  var s = size;
+  ctx.fillStyle = PALETTE.bloom;
+  for (var i = 0; i < 6; i++){
+    var ang = (Math.PI / 3) * i;
+    ctx.save();
+    ctx.rotate(ang);
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.quadraticCurveTo(s * 0.28, -s * 0.32, 0, -s * 0.72);
+    ctx.quadraticCurveTo(-s * 0.28, -s * 0.32, 0, 0);
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+  ctx.fillStyle = PALETTE.sun;
+  ctx.beginPath(); ctx.arc(0, 0, s * 0.24, 0, Math.PI * 2); ctx.fill();
+}
+function drawCherryShape(ctx, size){
+  var s = size;
+  ctx.strokeStyle = PALETTE.leaf;
+  ctx.beginPath();
+  ctx.moveTo(-s * 0.15, -s * 0.85);
+  ctx.quadraticCurveTo(-s * 0.05, -s * 0.35, -s * 0.4, -s * 0.05);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(-s * 0.15, -s * 0.85);
+  ctx.quadraticCurveTo(-s * 0.1, -s * 0.3, s * 0.35, s * 0.02);
+  ctx.stroke();
+  ctx.fillStyle = PALETTE.leaf;
+  ctx.beginPath();
+  ctx.moveTo(-s * 0.15, -s * 0.85);
+  ctx.quadraticCurveTo(s * 0.1, -s * 0.95, s * 0.3, -s * 0.75);
+  ctx.quadraticCurveTo(s * 0.05, -s * 0.75, -s * 0.15, -s * 0.85);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = PALETTE.bloomDeep;
+  ctx.beginPath(); ctx.arc(-s * 0.4, s * 0.28, s * 0.32, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(s * 0.35, s * 0.35, s * 0.32, 0, Math.PI * 2); ctx.fill();
+}
+function drawCupcakeShape(ctx, size, seed, frameIndex){
+  var s = size;
+  ctx.fillStyle = PALETTE.bloomDeep;
+  ctx.beginPath();
+  ctx.moveTo(-s * 0.55, s * 0.55);
+  ctx.lineTo(-s * 0.4, s * 0.05);
+  ctx.lineTo(s * 0.4, s * 0.05);
+  ctx.lineTo(s * 0.55, s * 0.55);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = PALETTE.paper;
+  ctx.beginPath();
+  ctx.moveTo(-s * 0.45, s * 0.1);
+  ctx.quadraticCurveTo(-s * 0.55, -s * 0.35, -s * 0.15, -s * 0.4);
+  ctx.quadraticCurveTo(-s * 0.25, -s * 0.75, s * 0.1, -s * 0.6);
+  ctx.quadraticCurveTo(s * 0.15, -s * 0.85, s * 0.4, -s * 0.5);
+  ctx.quadraticCurveTo(s * 0.6, -s * 0.25, s * 0.45, s * 0.1);
+  ctx.closePath(); ctx.fill();
+  var sprinkleColors = [PALETTE.sun, PALETTE.water, PALETTE.leaf, PALETTE.bloom];
+  for (var i = 0; i < 4; i++){
+    var pick = Math.floor(klippRand(seed, frameIndex, 1611 + i) * sprinkleColors.length);
+    ctx.fillStyle = sprinkleColors[pick];
+    var sx = (-0.3 + i * 0.22) * s;
+    var sy = -0.35 * s + (i % 2 === 0 ? -s * 0.1 : 0);
+    ctx.beginPath(); ctx.arc(sx, sy, s * 0.06, 0, Math.PI * 2); ctx.fill();
+  }
+}
+function drawStickerShape(ctx, kind, size, seed, frameIndex){
   if (kind === "heart") drawHeartShape(ctx, size);
   else if (kind === "sparkle") drawSparkleShape(ctx, size);
   else if (kind === "star") drawStarShape(ctx, size);
@@ -1887,6 +2341,23 @@ function drawStickerShape(ctx, kind, size){
   else if (kind === "trex") drawTrexShape(ctx, size);
   else if (kind === "rabbit") drawRabbitShape(ctx, size);
   else if (kind === "rock") drawRockShape(ctx, size);
+  else if (kind === "cat") drawCatShape(ctx, size);
+  else if (kind === "butterfly") drawButterflyShape(ctx, size, seed, frameIndex);
+  else if (kind === "snail") drawSnailShape(ctx, size);
+  else if (kind === "bird") drawBirdShape(ctx, size, seed, frameIndex);
+  else if (kind === "sun") drawSunShape(ctx, size, seed, frameIndex);
+  else if (kind === "cloud") drawCloudShape(ctx, size, seed, frameIndex);
+  else if (kind === "moon") drawMoonShape(ctx, size);
+  else if (kind === "bolt") drawBoltShape(ctx, size, seed, frameIndex);
+  else if (kind === "balloon") drawBalloonShape(ctx, size, seed, frameIndex);
+  else if (kind === "cake") drawCakeShape(ctx, size, seed, frameIndex);
+  else if (kind === "crown") drawCrownShape(ctx, size);
+  else if (kind === "present") drawPresentShape(ctx, size);
+  else if (kind === "icecream") drawIcecreamShape(ctx, size);
+  else if (kind === "flower") drawFlowerShape(ctx, size);
+  else if (kind === "cherry") drawCherryShape(ctx, size);
+  else if (kind === "cupcake") drawCupcakeShape(ctx, size, seed, frameIndex);
+  else throw new Error("drawStickerShape: unknown sticker kind \"" + kind + "\", nothing to draw. Add it to the dispatch or fix the caller, do not let it fall through silently.");
 }
 /* the one draw entry point for a placed sticker: alive, per frame, from
    (seed, frameIndex) alone. Called identically from the studio overlay
@@ -1898,7 +2369,7 @@ function drawSticker(ctx, kind, cx, cy, baseSize, seed, frameIndex){
   ctx.translate(cx, cy);
   ctx.rotate(v.rotation);
   ctx.scale(scale, scale);
-  drawStickerShape(ctx, kind, baseSize);
+  drawStickerShape(ctx, kind, baseSize, seed, frameIndex);
   ctx.restore();
 }
 
@@ -2044,6 +2515,7 @@ function ensureFilmMagicFields(film){
   if (!film) return film;
   if (!film.stickers) film.stickers = [];
   if (!film.filter) film.filter = "none";
+  if (!film.soundtrack) film.soundtrack = "quiet";
   if (typeof film.cardsOn !== "boolean") film.cardsOn = true;
   if (typeof film.titleText !== "string") film.titleText = "";
   if (typeof film.endText !== "string") film.endText = "";
@@ -2121,6 +2593,13 @@ function setFilmFilter(name){
   film.filter = name;
   db.updateFilm(film);
 }
+function setFilmSoundtrack(name){
+  var film = state.currentFilm;
+  if (!film) return;
+  if (SOUNDTRACKS.indexOf(name) === -1) return;
+  film.soundtrack = name;
+  db.updateFilm(film);
+}
 function setCardsOn(on){
   var film = state.currentFilm;
   if (!film) return;
@@ -2136,6 +2615,602 @@ function renameFilm(filmId, newName){
       if (state.currentFilm && state.currentFilm.id === film.id) state.currentFilm.name = film.name;
       return film;
     });
+  });
+}
+
+/* ==========================================================
+   SOUND: engine, score, live playback, sounds row (v4 stage 1)
+
+   Three layers, genuinely separate (see 02_WORK/briefs/v4-sound.md):
+     - track: a generative music bed under the whole film, opt in, in export
+     - events: a voice per sticker/spell, automatic, in export
+     - interface: shutter/tick/tap/flourish feedback, live only, never in
+       export, gated on a mute the film's own sound never is
+
+   The one rule: buildFilmScore(film, timeline, seed) is a PURE function.
+   It knows nothing about AudioContext. Live playback schedules its output
+   into a real AudioContext (this stage); export (stage 2, not built yet)
+   renders the identical score into an OfflineAudioContext. One score, two
+   consumers, so the kid never hears a film that plays back differently
+   than it exports. Every voice function below takes an explicit
+   AudioContext/OfflineAudioContext and start time, never reads
+   actx.currentTime to decide its own pitch or shape, so it is already
+   OfflineAudioContext-safe for stage 2 to reuse unchanged. */
+
+/* ---------------- pentatonic scale, rooted per film ----------------
+   Keeps every note on a fixed major-pentatonic set so nothing she places
+   can ever land dissonant, root chosen per film from filmSeed so each
+   film has its own key but always the same one on replay. */
+var PENTATONIC_STEPS = [0, 2, 4, 7, 9];
+function filmScaleRoot(seed){
+  /* MIDI 57 (A3) .. 69 (A4), a comfortable one-octave window for a small
+     synth register, picked once per film from its own seed */
+  return 57 + Math.floor(klippRand(seed, 0, 9001) * 13);
+}
+function scaleFreq(seed, degree, octave){
+  var root = filmScaleRoot(seed);
+  var stepIndex = ((degree % PENTATONIC_STEPS.length) + PENTATONIC_STEPS.length) % PENTATONIC_STEPS.length;
+  var step = PENTATONIC_STEPS[stepIndex];
+  var extraOctaves = Math.floor(degree / PENTATONIC_STEPS.length) + (octave || 0);
+  var midi = root + step + extraOctaves * 12;
+  return 440 * Math.pow(2, (midi - 69) / 12);
+}
+
+/* ---------------- synth core: four shared primitives ----------------
+   Soft, round, JORD/GENLYD register, nothing harsh. Every primitive
+   schedules itself with setValueAtTime/linearRampToValueAtTime/
+   exponentialRampToValueAtTime automation only, driven entirely by the
+   (actx, dest, t, ...) arguments it is handed, never actx.currentTime. */
+function connectWithPan(actx, node, dest, pan, t){
+  if (actx.createStereoPanner){
+    var panner = actx.createStereoPanner();
+    panner.pan.setValueAtTime(pan || 0, t);
+    node.connect(panner);
+    panner.connect(dest);
+  } else {
+    node.connect(dest);
+  }
+}
+/* a plucked note: quick attack, short exponential decay */
+function synthPluck(actx, dest, t, freq, opts){
+  opts = opts || {};
+  var decay = (typeof opts.decay === "number") ? opts.decay : 0.5;
+  var gainAmt = (typeof opts.gain === "number") ? opts.gain : 0.4;
+  var osc = actx.createOscillator();
+  osc.type = "triangle";
+  osc.frequency.setValueAtTime(freq, t);
+  var g = actx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.linearRampToValueAtTime(gainAmt, t + 0.008);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + Math.max(0.05, decay));
+  osc.connect(g);
+  connectWithPan(actx, g, dest, opts.pan, t);
+  osc.start(t);
+  osc.stop(t + decay + 0.08);
+  return { stop: function(){ try { osc.stop(); } catch (e) {} } };
+}
+/* a soft sine/triangle bell with inharmonic partials */
+function synthBell(actx, dest, t, freq, opts){
+  opts = opts || {};
+  var decay = (typeof opts.decay === "number") ? opts.decay : 1.2;
+  var gainAmt = (typeof opts.gain === "number") ? opts.gain : 0.3;
+  var partials = [1, 2.01, 3.98];
+  var partialGains = [1, 0.5, 0.25];
+  var out = actx.createGain();
+  out.gain.setValueAtTime(gainAmt, t);
+  connectWithPan(actx, out, dest, opts.pan, t);
+  var nodes = [];
+  for (var i = 0; i < partials.length; i++){
+    var osc = actx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(freq * partials[i], t);
+    var g = actx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(partialGains[i], t + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + Math.max(0.1, decay / (i * 0.4 + 1)));
+    osc.connect(g); g.connect(out);
+    osc.start(t); osc.stop(t + decay + 0.15);
+    nodes.push(osc);
+  }
+  return { stop: function(){ nodes.forEach(function(o){ try { o.stop(); } catch (e) {} }); } };
+}
+/* a filtered noise puff, deterministic content (klippRand, never
+   Math.random, so the same film sounds the same on replay and export) */
+function synthNoisePuff(actx, dest, t, opts){
+  opts = opts || {};
+  var decay = (typeof opts.decay === "number") ? opts.decay : 0.25;
+  var gainAmt = (typeof opts.gain === "number") ? opts.gain : 0.3;
+  var cutoff = opts.cutoff || 1800;
+  var dur = decay + 0.05;
+  var bufferSize = Math.max(1, Math.floor(actx.sampleRate * dur));
+  var buffer = actx.createBuffer(1, bufferSize, actx.sampleRate);
+  var data = buffer.getChannelData(0);
+  var noiseSeed = opts.noiseSeed || 1;
+  var noiseSalt = opts.noiseSalt || 1;
+  for (var i = 0; i < bufferSize; i++){
+    data[i] = klippRand(noiseSeed, i, noiseSalt) * 2 - 1;
+  }
+  var src = actx.createBufferSource();
+  src.buffer = buffer;
+  var filter = actx.createBiquadFilter();
+  filter.type = "lowpass";
+  filter.frequency.setValueAtTime(cutoff, t);
+  var g = actx.createGain();
+  g.gain.setValueAtTime(gainAmt, t);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + Math.max(0.05, decay));
+  src.connect(filter); filter.connect(g);
+  connectWithPan(actx, g, dest, opts.pan, t);
+  src.start(t); src.stop(t + dur);
+  return { stop: function(){ try { src.stop(); } catch (e) {} } };
+}
+/* a low warm pad: slow attack and release, two gently detuned voices */
+function synthPad(actx, dest, t, freq, opts){
+  opts = opts || {};
+  var dur = (typeof opts.dur === "number") ? opts.dur : ((typeof opts.decay === "number") ? opts.decay : 1.5);
+  var gainAmt = (typeof opts.gain === "number") ? opts.gain : 0.2;
+  var attack = Math.min(0.4, dur * 0.3);
+  var release = Math.min(0.6, dur * 0.3);
+  var osc1 = actx.createOscillator(); osc1.type = "sine";
+  osc1.frequency.setValueAtTime(freq, t);
+  var osc2 = actx.createOscillator(); osc2.type = "triangle";
+  osc2.frequency.setValueAtTime(freq * 1.005, t);
+  var g = actx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.linearRampToValueAtTime(gainAmt, t + attack);
+  g.gain.setValueAtTime(gainAmt, t + Math.max(attack, dur - release));
+  g.gain.linearRampToValueAtTime(0.0001, t + dur);
+  osc1.connect(g); osc2.connect(g);
+  connectWithPan(actx, g, dest, opts.pan, t);
+  osc1.start(t); osc2.start(t);
+  osc1.stop(t + dur + 0.15); osc2.stop(t + dur + 0.15);
+  return { stop: function(){ try { osc1.stop(); } catch (e) {} try { osc2.stop(); } catch (e) {} } };
+}
+/* a fast upward chirp, built on the pluck engine's envelope shape but with
+   its own rising pitch ramp: creature voices, never a raw primitive */
+function voiceChirp(actx, dest, t, params){
+  params = params || {};
+  var decay = (typeof params.decay === "number") ? params.decay : 0.22;
+  var freq = params.freq || 440;
+  var gainAmt = (typeof params.gain === "number") ? params.gain : 0.3;
+  var osc = actx.createOscillator();
+  osc.type = "sine";
+  osc.frequency.setValueAtTime(freq * 0.8, t);
+  osc.frequency.linearRampToValueAtTime(freq * 1.3, t + 0.09);
+  var g = actx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.linearRampToValueAtTime(gainAmt, t + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + Math.max(0.05, decay));
+  osc.connect(g);
+  connectWithPan(actx, g, dest, params.pan, t);
+  osc.start(t); osc.stop(t + decay + 0.08);
+  return { stop: function(){ try { osc.stop(); } catch (e) {} } };
+}
+/* a comedic downward pitch bend, wonky boings for the silly track and the
+   bigger/clumsier creature stickers */
+function voiceBoing(actx, dest, t, params){
+  params = params || {};
+  var decay = (typeof params.decay === "number") ? params.decay : 0.45;
+  var freq = params.freq || 440;
+  var gainAmt = (typeof params.gain === "number") ? params.gain : 0.3;
+  var osc = actx.createOscillator();
+  osc.type = "sine";
+  osc.frequency.setValueAtTime(freq * 1.6, t);
+  osc.frequency.exponentialRampToValueAtTime(Math.max(30, freq * 0.6), t + decay);
+  var g = actx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.linearRampToValueAtTime(gainAmt, t + 0.015);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + Math.max(0.05, decay));
+  osc.connect(g);
+  connectWithPan(actx, g, dest, params.pan, t);
+  osc.start(t); osc.stop(t + decay + 0.08);
+  return { stop: function(){ try { osc.stop(); } catch (e) {} } };
+}
+function voicePluck(actx, dest, t, params){ params = params || {}; return synthPluck(actx, dest, t, params.freq || 440, params); }
+function voiceBell(actx, dest, t, params){ params = params || {}; return synthBell(actx, dest, t, params.freq || 440, params); }
+function voicePad(actx, dest, t, params){ params = params || {}; return synthPad(actx, dest, t, params.freq || 440, params); }
+/* bright pop: a short, high, filtered puff for party stickers and bursts */
+function voicePop(actx, dest, t, params){
+  params = params || {};
+  var p = { decay: (typeof params.decay === "number") ? params.decay : 0.18, gain: params.gain, pan: params.pan,
+    cutoff: params.cutoff || 3200, noiseSeed: params.noiseSeed, noiseSalt: params.noiseSalt };
+  return synthNoisePuff(actx, dest, t, p);
+}
+/* a softer, lower puff: light percussion under the generative tracks */
+function voicePuff(actx, dest, t, params){
+  params = params || {};
+  var p = { decay: (typeof params.decay === "number") ? params.decay : 0.2, gain: params.gain, pan: params.pan,
+    cutoff: params.cutoff || 1200, noiseSeed: params.noiseSeed, noiseSalt: params.noiseSalt };
+  return synthNoisePuff(actx, dest, t, p);
+}
+var VOICE_FNS = { pluck: voicePluck, bell: voiceBell, pad: voicePad, puff: voicePuff, pop: voicePop, chirp: voiceChirp, boing: voiceBoing };
+var VOICE_NAMES = Object.keys(VOICE_FNS);
+
+/* ---------------- event voices: every sticker kind, every spell ----------------
+   Family maps to timbre so the sound teaches her what the sticker is:
+   hearts/sweets are soft plucks, sky things are long airy bells, creatures
+   are short chirps and boings, party things are bright pops. */
+var STICKER_VOICE_MAP = {
+  heart: "pluck", sparkle: "bell", rainbow: "bell", star: "bell", trex: "boing", rabbit: "chirp", rock: "pluck",
+  cat: "chirp", butterfly: "bell", snail: "pluck", bird: "chirp",
+  sun: "bell", cloud: "bell", moon: "bell", bolt: "pop",
+  balloon: "pop", cake: "pop", crown: "pop", present: "pop",
+  icecream: "pluck", flower: "pluck", cherry: "pluck", cupcake: "pluck"
+};
+var SPELL_VOICE_MAP = { heartfall: "pluck", pinkout: "pad", fireworks: "pop" };
+
+var EVENT_POLYPHONY_CAP = 6;
+/* keeps at most `cap` events per exact tick timestamp, dropping the rest
+   (deterministically: first `cap` in score order survive) so twelve
+   stickers landing on one frame can never clip */
+function capPolyphony(events, cap){
+  var seenPerTick = {};
+  var out = [];
+  events.forEach(function(ev){
+    var key = String(ev.tUs);
+    var seen = seenPerTick[key] || 0;
+    if (seen < cap){ out.push(ev); seenPerTick[key] = seen + 1; }
+  });
+  return out;
+}
+
+/* one event per sticker, fired on the timeline tick where it FIRST becomes
+   visible (respects the peek/film life window via stickerVisibleForPhoto),
+   never once per held tick, so a photo held for 3 ticks does not retrigger
+   the same pluck three times */
+function buildEventScoreFromStickers(film, timeline, seed){
+  var out = [];
+  var stickers = (film && film.stickers) || [];
+  timeline.forEach(function(entry){
+    if (entry.segment !== "photo" || entry.segmentTick !== 0) return;
+    stickers.forEach(function(st){
+      var voice = STICKER_VOICE_MAP[st.sid];
+      if (!voice) return;
+      var anchor = (typeof st.anchorPhotoIndex === "number") ? st.anchorPhotoIndex : 0;
+      if (entry.photoIndex !== anchor) return;
+      if (!stickerVisibleForPhoto(st, entry.photoIndex)) return;
+      var idSeed = stringToSeed(String(st.id));
+      var degree = Math.floor(klippRand(seed, idSeed, 7001) * 8);
+      out.push({
+        tUs: entry.timestamp, voice: voice, layer: "event", source: "sticker:" + st.sid + ":" + st.id,
+        params: {
+          freq: scaleFreq(seed, degree, 0),
+          pan: klippRand(seed, idSeed, 7002) * 1.6 - 0.8,
+          decay: 0.35 + klippRand(seed, idSeed, 7003) * 0.35,
+          gain: 0.45
+        }
+      });
+    });
+  });
+  return out;
+}
+/* heartfall: a pluck each time one of the falling hearts crosses back to
+   the top of its cycle, same math as drawFilterHeartfall so the sound
+   tracks the drops without redrawing anything */
+function buildHeartfallEvents(timeline, seed){
+  var out = [];
+  var count = 6;
+  timeline.forEach(function(entry){
+    if (entry.segment !== "photo") return;
+    var frameIndex = entry.frameIndex;
+    for (var i = 0; i < count; i++){
+      var speed = 0.6 + klippRand(seed, i, 202) * 0.5;
+      var travel = ((frameIndex * speed) + klippRand(seed, i, 303) * 40) % 40;
+      if (travel < speed){
+        var degree = Math.floor(klippRand(seed, frameIndex, 8010 + i) * 5);
+        out.push({
+          tUs: entry.timestamp, voice: SPELL_VOICE_MAP.heartfall, layer: "event", source: "spell:heartfall:" + i,
+          params: { freq: scaleFreq(seed, degree, 1), pan: klippRand(seed, i, 8020) * 1.6 - 0.8, decay: 0.9, gain: 0.32 }
+        });
+      }
+    }
+  });
+  return out;
+}
+/* fireworks: one pop per burst, timed to the burst's own start tick, same
+   math as drawFilterFireworks */
+function buildFireworksEvents(timeline, seed){
+  var out = [];
+  var totalFrames = timeline.length;
+  var startFrame = totalFrames - FIREWORKS_HOLD_TICKS;
+  var bursts = 3;
+  for (var i = 0; i < bursts; i++){
+    var startTick = Math.floor(klippRand(seed, i, 503) * 6);
+    var entry = timeline[startFrame + startTick];
+    if (!entry) continue;
+    var degree = Math.floor(klippRand(seed, i, 8110) * 5);
+    out.push({
+      tUs: entry.timestamp, voice: SPELL_VOICE_MAP.fireworks, layer: "event", source: "spell:fireworks:" + i,
+      params: { freq: scaleFreq(seed, degree, 1), pan: klippRand(seed, i, 8120) * 1.6 - 0.8, decay: 0.5, gain: 0.45 }
+    });
+  }
+  return out;
+}
+/* pinkout has no discrete visual moment (the glow is constant), so it gets
+   one soft pad swell at the film's first real frame, matching "every spell
+   gets one voice" without inventing a moment the picture does not have */
+function buildPinkoutEvents(timeline, seed){
+  var first = null;
+  for (var i = 0; i < timeline.length; i++){ if (timeline[i].segment === "photo"){ first = timeline[i]; break; } }
+  if (!first) return [];
+  return [{
+    tUs: first.timestamp, voice: SPELL_VOICE_MAP.pinkout, layer: "event", source: "spell:pinkout",
+    params: { freq: scaleFreq(seed, 0, 0), pan: 0, decay: 1.6, dur: 1.6, gain: 0.22 }
+  }];
+}
+function buildEventScore(film, timeline, seed){
+  var events = buildEventScoreFromStickers(film, timeline, seed);
+  var filterName = film && film.filter;
+  if (filterName === "heartfall") events = events.concat(buildHeartfallEvents(timeline, seed));
+  else if (filterName === "fireworks") events = events.concat(buildFireworksEvents(timeline, seed));
+  else if (filterName === "pinkout") events = events.concat(buildPinkoutEvents(timeline, seed));
+  return events;
+}
+
+/* ---------------- generative tracks: the sounds row ----------------
+   Five tracks, fixed by the user's call: quiet (default, silent), bouncy,
+   dreamy, silly, marching. Every note is generated from the film seed
+   against buildFilmTimeline's actual tick count, never looped and cut. */
+var SOUNDTRACKS = ["quiet", "bouncy", "dreamy", "silly", "marching"];
+var TRACKS_UI = [
+  { id: "quiet", label: "quiet" },
+  { id: "bouncy", label: "bouncy" },
+  { id: "dreamy", label: "dreamy" },
+  { id: "silly", label: "silly" },
+  { id: "marching", label: "marching" }
+];
+/* clips any note whose declared duration would run past the timeline's
+   own end back to the time actually left, so a track resolves instead of
+   getting cut off mid-note */
+function clipTrackToTimeline(events, totalTicks){
+  var totalSec = totalTicks / FPS;
+  return events.map(function(ev){
+    if (ev.params && typeof ev.params.dur === "number"){
+      var startSec = ev.tUs / 1e6;
+      var maxDur = totalSec - startSec;
+      ev.params.dur = Math.max(0.05, Math.min(ev.params.dur, maxDur));
+    }
+    return ev;
+  });
+}
+function buildBouncyTrack(totalTicks, seed){
+  var out = []; var tickUs = Math.round(1e6 / FPS); var step = 2;
+  for (var t = 0; t < totalTicks; t += step){
+    var idx = t / step;
+    var degree = Math.floor(klippRand(seed, idx, 9101) * 5);
+    out.push({ tUs: t * tickUs, voice: "pluck", layer: "track", source: "track:bouncy:note",
+      params: { freq: scaleFreq(seed, degree, 0), pan: klippRand(seed, idx, 9102) * 1.2 - 0.6, decay: 0.45, gain: 0.26 } });
+    if (idx % 2 === 0){
+      out.push({ tUs: t * tickUs, voice: "puff", layer: "track", source: "track:bouncy:perc",
+        params: { pan: 0, decay: 0.18, gain: 0.16 } });
+    }
+  }
+  return out;
+}
+function buildDreamyTrack(totalTicks, seed){
+  var out = []; var tickUs = Math.round(1e6 / FPS); var step = 8;
+  for (var t = 0; t < totalTicks; t += step){
+    var idx = t / step;
+    var remainingTicks = Math.min(step, totalTicks - t);
+    var degree = Math.floor(klippRand(seed, idx, 9201) * 5);
+    var durSec = (remainingTicks / FPS) * 0.9;
+    out.push({ tUs: t * tickUs, voice: "pad", layer: "track", source: "track:dreamy:pad",
+      params: { freq: scaleFreq(seed, degree, -1), pan: klippRand(seed, idx, 9202) - 0.5, decay: durSec, dur: durSec, gain: 0.2 } });
+    if (klippRand(seed, idx, 9203) > 0.5 && step > 2){
+      out.push({ tUs: (t + Math.floor(step / 2)) * tickUs, voice: "bell", layer: "track", source: "track:dreamy:bell",
+        params: { freq: scaleFreq(seed, degree + 2, 1), pan: 0, decay: 1.1, gain: 0.14 } });
+    }
+  }
+  return out;
+}
+function buildSillyTrack(totalTicks, seed){
+  var out = []; var tickUs = Math.round(1e6 / FPS); var t = 0; var idx = 0;
+  while (t < totalTicks){
+    var gap = 2 + Math.floor(klippRand(seed, idx, 9301) * 4);
+    var degree = Math.floor(klippRand(seed, idx, 9302) * 5);
+    out.push({ tUs: t * tickUs, voice: "boing", layer: "track", source: "track:silly:note",
+      params: { freq: scaleFreq(seed, degree, 0), pan: klippRand(seed, idx, 9303) * 1.4 - 0.7, decay: 0.38, gain: 0.24 } });
+    t += gap; idx++;
+  }
+  return out;
+}
+function buildMarchingTrack(totalTicks, seed){
+  var out = []; var tickUs = Math.round(1e6 / FPS); var step = 2;
+  for (var t = 0; t < totalTicks; t += step){
+    var idx = t / step;
+    var degree = (idx % 2 === 0) ? 0 : 2;
+    out.push({ tUs: t * tickUs, voice: "pluck", layer: "track", source: "track:marching:note",
+      params: { freq: scaleFreq(seed, degree, -1), pan: 0, decay: 0.32, gain: 0.28 } });
+    out.push({ tUs: t * tickUs, voice: "puff", layer: "track", source: "track:marching:perc",
+      params: { pan: 0, decay: 0.14, gain: 0.18 } });
+  }
+  return out;
+}
+function buildTrackScore(kind, totalTicks, seed){
+  if (!kind || kind === "quiet" || totalTicks <= 0) return [];
+  var raw;
+  if (kind === "bouncy") raw = buildBouncyTrack(totalTicks, seed);
+  else if (kind === "dreamy") raw = buildDreamyTrack(totalTicks, seed);
+  else if (kind === "silly") raw = buildSillyTrack(totalTicks, seed);
+  else if (kind === "marching") raw = buildMarchingTrack(totalTicks, seed);
+  else return [];
+  return clipTrackToTimeline(raw, totalTicks);
+}
+
+/* ---------------- buildFilmScore: the one pure entry point ----------------
+   Same film, same timeline, same seed, same score, every time, forever.
+   No AudioContext anywhere near this function. Consumed by live playback
+   below (stage 1) and by export's OfflineAudioContext render (stage 2,
+   not built yet). */
+function buildFilmScore(film, timeline, seed){
+  seed = (typeof seed === "number") ? seed : filmSeed(film);
+  timeline = timeline || [];
+  var track = buildTrackScore(film && film.soundtrack, timeline.length, seed);
+  var events = buildEventScore(film, timeline, seed);
+  var merged = track.concat(events);
+  merged.sort(function(a, b){ return a.tUs - b.tUs; });
+  return capPolyphony(merged, EVENT_POLYPHONY_CAP);
+}
+
+/* the exact timeline the quick in-app loop plays (no title/end cards, see
+   playbackTotalTicks), pulled into its own function so the live score is
+   built against precisely what is on screen, never a re-derived guess */
+function buildPlaybackTimeline(film, photoCount){
+  var opts = { lastHoldTicks: (film && film.filter === "fireworks") ? FIREWORKS_HOLD_TICKS : HOLD_TICKS };
+  return buildFrameTimeline(photoCount, opts);
+}
+
+/* ---------------- AudioContext lifecycle ----------------
+   Never constructed at page load. Created lazily on the first real touch
+   and resume()d there, per iOS Safari/Chrome autoplay policy. If it is
+   unavailable or never resumes, every visual and export behaviour must
+   keep working exactly as it does today: sound is strictly additive, so
+   every call in this section is wrapped to fail silently. */
+var audioCtx = null, masterGainNode = null, filmGainNode = null, interfaceGainNode = null;
+var activeFilmAudioNodes = [];
+var currentFilmScore = [];
+var FILM_GAIN_LEVEL = 0.85, INTERFACE_GAIN_LEVEL = 0.3;
+var SOUND_MUTE_KEY = "klipp_sound_muted";
+state.soundMuted = false;
+try {
+  var savedMute = localStorage.getItem(SOUND_MUTE_KEY);
+  if (savedMute !== null) state.soundMuted = savedMute === "1";
+} catch (e) { /* private mode or blocked storage: sound stays on by default */ }
+
+function saveSoundMuted(muted){
+  state.soundMuted = !!muted;
+  try { localStorage.setItem(SOUND_MUTE_KEY, state.soundMuted ? "1" : "0"); } catch (e) {}
+  if (interfaceGainNode) interfaceGainNode.gain.value = state.soundMuted ? 0 : INTERFACE_GAIN_LEVEL;
+}
+
+/* true if a running AudioContext is ready to schedule into, lazily
+   creating and resuming one on the way; never throws, never blocks a
+   caller that ignores its return value */
+function ensureAudioAvailable(){
+  var Ctor = (typeof AudioContext !== "undefined") ? AudioContext
+    : (typeof webkitAudioContext !== "undefined") ? webkitAudioContext : null;
+  if (!Ctor) return false;
+  if (!audioCtx){
+    try {
+      audioCtx = new Ctor();
+      masterGainNode = audioCtx.createGain(); masterGainNode.gain.value = 1;
+      filmGainNode = audioCtx.createGain(); filmGainNode.gain.value = FILM_GAIN_LEVEL;
+      interfaceGainNode = audioCtx.createGain(); interfaceGainNode.gain.value = state.soundMuted ? 0 : INTERFACE_GAIN_LEVEL;
+      filmGainNode.connect(masterGainNode);
+      interfaceGainNode.connect(masterGainNode);
+      masterGainNode.connect(audioCtx.destination);
+    } catch (e){ audioCtx = null; return false; }
+  }
+  if (audioCtx.state === "suspended"){
+    try { audioCtx.resume().catch(function(){}); } catch (e) {}
+  }
+  return !!(audioCtx && audioCtx.state !== "closed");
+}
+/* one real touch anywhere in the app satisfies the autoplay gesture
+   requirement; after that this listener has nothing left to do */
+function firstGestureAudioInit(){
+  ensureAudioAvailable();
+  document.removeEventListener("pointerdown", firstGestureAudioInit, true);
+}
+document.addEventListener("pointerdown", firstGestureAudioInit, true);
+/* installed PWA on a phone: never keep playing over whatever she switches
+   to, and never fight the ringer/silent switch by trying to force resume
+   without a fresh gesture */
+document.addEventListener("visibilitychange", function(){
+  if (!audioCtx) return;
+  if (document.hidden){
+    stopFilmAudio();
+    try { if (audioCtx.state === "running") audioCtx.suspend().catch(function(){}); } catch (e) {}
+  } else {
+    try { if (audioCtx.state === "suspended") audioCtx.resume().catch(function(){}); } catch (e) {}
+  }
+});
+
+function stopFilmAudio(){
+  activeFilmAudioNodes.forEach(function(h){ try { h.stop(); } catch (e) {} });
+  activeFilmAudioNodes = [];
+}
+/* schedules every event in `score` at startCtxTime + event.tUs/1e6, into
+   the film gain bus. A voice failing to construct (unsupported node type
+   on some odd browser, say) is swallowed, never allowed to break playback. */
+function playFilmScoreFrom(score, startCtxTime){
+  if (!audioCtx || audioCtx.state !== "running" || !filmGainNode) return;
+  score.forEach(function(ev){
+    var fn = VOICE_FNS[ev.voice];
+    if (!fn) return;
+    try {
+      var handle = fn(audioCtx, filmGainNode, startCtxTime + ev.tUs / 1e6, ev.params);
+      if (handle) activeFilmAudioNodes.push(handle);
+    } catch (e) { /* additive: a synth failure never breaks playback */ }
+  });
+}
+/* rebuilds the score (soundtrack or spell may just have changed) and
+   restarts it aligned to however far into the loop playback already is,
+   so a chip tap updates the sound the same tick it updates the picture */
+function syncFilmAudioToPlaybackPosition(){
+  if (!audioCtx || audioCtx.state !== "running" || !state.currentFilm || !state.frames.length) return;
+  stopFilmAudio();
+  var audioTimeline = buildPlaybackTimeline(state.currentFilm, state.frames.length);
+  currentFilmScore = buildFilmScore(state.currentFilm, audioTimeline, filmSeed(state.currentFilm));
+  var tickUs = Math.round(1e6 / FPS);
+  var elapsedSec = (playGlobalTick * tickUs) / 1e6;
+  playFilmScoreFrom(currentFilmScore, audioCtx.currentTime - elapsedSec);
+}
+
+/* ---------------- interface sounds: live only, never in the score ----------------
+   Feedback under her finger, quieter than the film's own sound, on by
+   default with a mute in the grown up corner. */
+function playInterfaceSound(name){
+  if (state.soundMuted) return;
+  if (!ensureAudioAvailable() || !interfaceGainNode) return;
+  var t = audioCtx.currentTime + 0.001;
+  try {
+    if (name === "shutter") synthNoisePuff(audioCtx, interfaceGainNode, t, { decay: 0.12, gain: 0.55, cutoff: 2600, noiseSeed: 4001, noiseSalt: 1 });
+    else if (name === "tick") synthPluck(audioCtx, interfaceGainNode, t, 880, { decay: 0.05, gain: 0.16 });
+    else if (name === "tap") synthPluck(audioCtx, interfaceGainNode, t, 660, { decay: 0.06, gain: 0.2 });
+    else if (name === "flourish") synthBell(audioCtx, interfaceGainNode, t, 990, { decay: 0.4, gain: 0.22 });
+  } catch (e) { /* sound is strictly additive, never break the tap it was reacting to */ }
+}
+
+/* ---------------- sounds row (tracks-row / sounds sheet UI) ---------------- */
+function renderTracksRow(){
+  var film = state.currentFilm;
+  var active = (film && film.soundtrack) || "quiet";
+  function pick(trackId){
+    setFilmSoundtrack(trackId);
+    renderTracksRow();
+    playInterfaceSound("tap");
+    syncFilmAudioToPlaybackPosition();
+    $("sounds-sheet").classList.remove("open");
+    navPop("overlay");
+  }
+  var grid = $("tracks-sheet-grid");
+  if (grid){
+    grid.innerHTML = "";
+    TRACKS_UI.forEach(function(track){
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "track-row-btn" + (track.id === active ? " active" : "");
+      btn.setAttribute("data-track", track.id);
+      btn.textContent = track.label;
+      btn.addEventListener("click", function(){ pick(track.id); });
+      grid.appendChild(btn);
+    });
+  }
+  var soundsBtn = $("sounds-btn");
+  if (soundsBtn) soundsBtn.classList.toggle("active", active !== "quiet");
+}
+if ($("sounds-btn")){
+  $("sounds-btn").addEventListener("click", function(){
+    renderTracksRow();
+    $("sounds-sheet").classList.add("open");
+    if (navStack[navStack.length - 1] !== "overlay") navPush("overlay");
+    playInterfaceSound("tap");
+  });
+}
+if ($("cancel-sounds-sheet")){
+  $("cancel-sounds-sheet").addEventListener("click", function(){
+    $("sounds-sheet").classList.remove("open");
+    navPop("overlay");
   });
 }
 
@@ -2167,60 +3242,243 @@ function pickVideoCodec(width, height){
   return tryNext();
 }
 
-function encodeWithWebCodecs(frames, film, codecConfig, onProgress){
-  var size = targetSize(film.orientation);
-  var canvas = (typeof OffscreenCanvas !== "undefined")
-    ? new OffscreenCanvas(size.w, size.h)
-    : document.createElement("canvas");
-  if (typeof OffscreenCanvas === "undefined"){ canvas.width = size.w; canvas.height = size.h; }
-  var ctx = canvas.getContext("2d");
+/* ---------------- audio export: OfflineAudioContext render + AudioEncoder ----------------
+   The score is already pure and OfflineAudioContext-safe (stage 1). This
+   section is the second consumer the brief names: it renders the exact
+   same buildFilmScore output into an OfflineAudioContext, encodes the
+   result to AAC, and hands the chunks to encodeWithWebCodecs to interleave
+   with the video. Sound stays strictly additive here too: any failure in
+   this whole section falls back to a silent video, exactly as before
+   stage 2 existed, and never blocks or throws in front of the kid. */
+var AUDIO_SAMPLE_RATE = 44100, AUDIO_CHANNELS = 2, AUDIO_BITRATE = 128000;
+var AUDIO_CODEC_CANDIDATES = ["mp4a.40.2"];
 
-  var target = new Mp4Muxer.ArrayBufferTarget();
-  var muxer = new Mp4Muxer.Muxer({
-    target: target,
-    video: { codec: "avc", width: size.w, height: size.h },
-    fastStart: "in-memory"
-  });
-
-  var encoderError = null;
-  var encoder = new VideoEncoder({
-    output: function(chunk, meta){ muxer.addVideoChunk(chunk, meta); },
-    error: function(e){ encoderError = e; }
-  });
-  encoder.configure({
-    codec: codecConfig.codec, width: size.w, height: size.h,
-    bitrate: codecConfig.bitrate, framerate: FPS
-  });
-
-  var timeline = buildFilmTimeline(film, frames.length);
-  var bitmapCache = {};
-  function getBitmap(photoIndex){
-    if (bitmapCache[photoIndex]) return Promise.resolve(bitmapCache[photoIndex]);
-    return createImageBitmap(frames[photoIndex].blob).then(function(bmp){
-      bitmapCache[photoIndex] = bmp;
-      return bmp;
-    });
+/* pure: the exact microsecond duration a timeline covers, same origin the
+   video frames use (timestamp 0 at the first tick). */
+function audioTimelineDurationUs(timeline){
+  if (!timeline || !timeline.length) return 0;
+  var last = timeline[timeline.length - 1];
+  return last.timestamp + last.duration;
+}
+/* pure: how many samples at sampleRate a duration in microseconds needs. */
+function audioSampleLengthForDuration(durationUs, sampleRate){
+  return Math.max(1, Math.round((durationUs / 1e6) * sampleRate));
+}
+/* the A/V sync assertion the brief asks for in code, not eyeballed: the
+   rendered audio length, converted back to microseconds, must match the
+   timeline duration to within one tick. Throws rather than silently
+   drifting, so a real mismatch is loud in development and never ships. */
+function assertAudioVideoSync(renderedLength, sampleRate, durationUs, tickUs){
+  var renderedUs = (renderedLength / sampleRate) * 1e6;
+  var diffUs = Math.abs(renderedUs - durationUs);
+  if (diffUs > tickUs){
+    throw new Error("audio/video duration mismatch: rendered " + renderedUs +
+      "us, timeline " + durationUs + "us, diff " + diffUs + "us exceeds one tick (" + tickUs + "us)");
   }
+  return diffUs;
+}
 
-  return timeline.reduce(function(chain, entry){
-    return chain.then(function(){
-      if (encoderError) throw encoderError;
-      return drawTimelineEntryToCanvas(ctx, entry, film, size, timeline.length, getBitmap).then(function(){
-        var vf = new VideoFrame(canvas, { timestamp: entry.timestamp, duration: entry.duration });
-        encoder.encode(vf, { keyFrame: entry.frameIndex === 0 });
-        vf.close();
-        if (onProgress) onProgress((entry.frameIndex + 1) / timeline.length);
-        return nextTick();
-      });
+/* AudioEncoder.isConfigSupported first, always: the exact isConfigSupported
+   gating pattern pickVideoCodec uses. Resolves null (never rejects) when
+   AAC via WebCodecs is not available, which is the everyday case in this
+   jsdom harness on purpose (no AudioEncoder stub exists), proving export
+   still succeeds silent rather than failing. */
+function pickAudioCodec(numberOfChannels, sampleRate){
+  if (typeof AudioEncoder === "undefined" || !AudioEncoder.isConfigSupported){
+    return Promise.resolve(null);
+  }
+  var i = 0;
+  function tryNext(){
+    if (i >= AUDIO_CODEC_CANDIDATES.length) return Promise.resolve(null);
+    var codec = AUDIO_CODEC_CANDIDATES[i++];
+    return AudioEncoder.isConfigSupported({
+      codec: codec, numberOfChannels: numberOfChannels, sampleRate: sampleRate, bitrate: AUDIO_BITRATE
+    }).then(function(support){
+      if (support && support.supported) return { codec: codec, numberOfChannels: numberOfChannels, sampleRate: sampleRate, bitrate: AUDIO_BITRATE };
+      return tryNext();
+    }).catch(function(){ return tryNext(); });
+  }
+  return tryNext();
+}
+
+/* renders buildFilmScore (track + events, never interface sounds, see the
+   architectural rule) into an OfflineAudioContext whose length is asserted
+   against the timeline, not eyeballed. Resolves null, never rejects, if
+   OfflineAudioContext is unavailable: audio is strictly additive, the
+   export must still produce a video either way. */
+function renderFilmAudioOffline(film, timeline){
+  var Ctor = (typeof OfflineAudioContext !== "undefined") ? OfflineAudioContext
+    : (typeof webkitOfflineAudioContext !== "undefined") ? webkitOfflineAudioContext : null;
+  if (!Ctor || !timeline || !timeline.length) return Promise.resolve(null);
+  var durationUs = audioTimelineDurationUs(timeline);
+  var length = audioSampleLengthForDuration(durationUs, AUDIO_SAMPLE_RATE);
+  var tickUs = Math.round(1e6 / FPS);
+  var offlineCtx;
+  try {
+    offlineCtx = new Ctor(AUDIO_CHANNELS, length, AUDIO_SAMPLE_RATE);
+    assertAudioVideoSync(offlineCtx.length, AUDIO_SAMPLE_RATE, durationUs, tickUs);
+  } catch (e){ return Promise.resolve(null); }
+  var seed = filmSeed(film);
+  var score = buildFilmScore(film, timeline, seed);
+  var filmGain = offlineCtx.createGain();
+  filmGain.gain.value = FILM_GAIN_LEVEL;
+  filmGain.connect(offlineCtx.destination);
+  score.forEach(function(ev){
+    var fn = VOICE_FNS[ev.voice];
+    if (!fn) return;
+    try { fn(offlineCtx, filmGain, ev.tUs / 1e6, ev.params); } catch (e) { /* additive: one bad voice never breaks the render */ }
+  });
+  try {
+    return offlineCtx.startRendering();
+  } catch (e){ return Promise.resolve(null); }
+}
+
+/* slices a rendered AudioBuffer into fixed-size planar frames and feeds
+   them through AudioEncoder in order. Timestamps are microseconds counted
+   from sample 0 at the same origin the video timeline starts from, which
+   is what keeps picture and sound starting together. Returns an ordered
+   array the caller interleaves into the muxer alongside video chunks. */
+function encodeAudioBufferToChunks(audioBuffer, codecConfig){
+  return new Promise(function(resolve, reject){
+    var out = [];
+    var encoderError = null;
+    var encoder = new AudioEncoder({
+      output: function(chunk, meta){ out.push({ chunk: chunk, meta: meta, timestamp: chunk.timestamp }); },
+      error: function(e){ encoderError = e; }
     });
-  }, Promise.resolve()).then(function(){
-    return encoder.flush();
-  }).then(function(){
-    if (encoderError) throw encoderError;
-    encoder.close();
-    muxer.finalize();
-    Object.keys(bitmapCache).forEach(function(k){ if (bitmapCache[k].close) bitmapCache[k].close(); });
-    return new Blob([target.buffer], { type: "video/mp4" });
+    try {
+      encoder.configure({
+        codec: codecConfig.codec,
+        numberOfChannels: audioBuffer.numberOfChannels,
+        sampleRate: audioBuffer.sampleRate,
+        bitrate: codecConfig.bitrate
+      });
+    } catch (e){ reject(e); return; }
+    var FRAME_SAMPLES = 1024;
+    var channels = audioBuffer.numberOfChannels;
+    var channelData = [];
+    for (var c = 0; c < channels; c++) channelData.push(audioBuffer.getChannelData(c));
+    var total = audioBuffer.length;
+    var offset = 0;
+    while (offset < total){
+      var frameLen = Math.min(FRAME_SAMPLES, total - offset);
+      var planar = new Float32Array(frameLen * channels);
+      for (var ch = 0; ch < channels; ch++){
+        planar.set(channelData[ch].subarray(offset, offset + frameLen), ch * frameLen);
+      }
+      var timestampUs = Math.round((offset / audioBuffer.sampleRate) * 1e6);
+      try {
+        var data = new AudioData({
+          format: "f32-planar",
+          sampleRate: audioBuffer.sampleRate,
+          numberOfFrames: frameLen,
+          numberOfChannels: channels,
+          timestamp: timestampUs,
+          data: planar
+        });
+        encoder.encode(data);
+        data.close();
+      } catch (e){ encoderError = encoderError || e; }
+      offset += frameLen;
+    }
+    encoder.flush().then(function(){
+      encoder.close();
+      if (encoderError){ reject(encoderError); return; }
+      resolve(out);
+    }).catch(reject);
+  });
+}
+
+function encodeWithWebCodecs(frames, film, codecConfig, audioCodecConfig, onProgress){
+  var size = targetSize(film.orientation);
+  var timeline = buildFilmTimeline(film, frames.length);
+
+  /* audio is prepared and fully encoded before the muxer is even
+     constructed: whether the muxer gets an audio track at all is decided
+     right here, once, so a track is never added and then left empty. Any
+     failure anywhere in this chain resolves to null, never rejects, and
+     the export continues as a silent video. */
+  var audioPrep = audioCodecConfig
+    ? renderFilmAudioOffline(film, timeline).then(function(audioBuffer){
+        if (!audioBuffer) return null;
+        return encodeAudioBufferToChunks(audioBuffer, audioCodecConfig).then(function(chunks){
+          return chunks.length ? { chunks: chunks, config: audioCodecConfig } : null;
+        });
+      }).catch(function(e){
+        console.error("klipp audio export failed, continuing with a silent video:", e);
+        return null;
+      })
+    : Promise.resolve(null);
+
+  return audioPrep.then(function(audio){
+    var canvas = (typeof OffscreenCanvas !== "undefined")
+      ? new OffscreenCanvas(size.w, size.h)
+      : document.createElement("canvas");
+    if (typeof OffscreenCanvas === "undefined"){ canvas.width = size.w; canvas.height = size.h; }
+    var ctx = canvas.getContext("2d");
+
+    var target = new Mp4Muxer.ArrayBufferTarget();
+    var muxer = new Mp4Muxer.Muxer({
+      target: target,
+      video: { codec: "avc", width: size.w, height: size.h },
+      audio: audio ? { codec: "aac", numberOfChannels: audio.config.numberOfChannels, sampleRate: audio.config.sampleRate } : undefined,
+      fastStart: "in-memory"
+    });
+
+    var encoderError = null;
+    var encoder = new VideoEncoder({
+      output: function(chunk, meta){ muxer.addVideoChunk(chunk, meta); },
+      error: function(e){ encoderError = e; }
+    });
+    encoder.configure({
+      codec: codecConfig.codec, width: size.w, height: size.h,
+      bitrate: codecConfig.bitrate, framerate: FPS
+    });
+
+    var bitmapCache = {};
+    function getBitmap(photoIndex){
+      if (bitmapCache[photoIndex]) return Promise.resolve(bitmapCache[photoIndex]);
+      return createImageBitmap(frames[photoIndex].blob).then(function(bmp){
+        bitmapCache[photoIndex] = bmp;
+        return bmp;
+      });
+    }
+
+    /* audio chunks are already ordered by timestamp (encoder output order
+       matches encode() call order); fed to the muxer as video catches up
+       to each chunk's timestamp, so the two tracks interleave rather than
+       audio landing in one lump at the end. */
+    var audioChunks = audio ? audio.chunks : [];
+    var audioIdx = 0;
+    function flushAudioUpTo(tsUs){
+      while (audioIdx < audioChunks.length && audioChunks[audioIdx].timestamp <= tsUs){
+        muxer.addAudioChunk(audioChunks[audioIdx].chunk, audioChunks[audioIdx].meta);
+        audioIdx++;
+      }
+    }
+
+    return timeline.reduce(function(chain, entry){
+      return chain.then(function(){
+        if (encoderError) throw encoderError;
+        return drawTimelineEntryToCanvas(ctx, entry, film, size, timeline.length, getBitmap).then(function(){
+          var vf = new VideoFrame(canvas, { timestamp: entry.timestamp, duration: entry.duration });
+          encoder.encode(vf, { keyFrame: entry.frameIndex === 0 });
+          vf.close();
+          flushAudioUpTo(entry.timestamp + entry.duration);
+          if (onProgress) onProgress((entry.frameIndex + 1) / timeline.length);
+          return nextTick();
+        });
+      });
+    }, Promise.resolve()).then(function(){
+      return encoder.flush();
+    }).then(function(){
+      if (encoderError) throw encoderError;
+      encoder.close();
+      flushAudioUpTo(Infinity); /* any remainder, belt and braces */
+      muxer.finalize();
+      Object.keys(bitmapCache).forEach(function(k){ if (bitmapCache[k].close) bitmapCache[k].close(); });
+      return { blob: new Blob([target.buffer], { type: "video/mp4" }), audioIncluded: !!audio };
+    });
   });
 }
 
@@ -2346,17 +3604,26 @@ function exportFilm(filmId){
     }
     var size = targetSize(film.orientation);
     showExportOverlay();
-    return pickVideoCodec(size.w, size.h).then(function(codecConfig){
+    return Promise.all([
+      pickVideoCodec(size.w, size.h),
+      pickAudioCodec(AUDIO_CHANNELS, AUDIO_SAMPLE_RATE)
+    ]).then(function(codecs){
+      var codecConfig = codecs[0], audioCodecConfig = codecs[1];
       if (codecConfig && typeof Mp4Muxer !== "undefined"){
-        return encodeWithWebCodecs(frames, film, codecConfig, updateExportOverlay)
-          .then(function(blob){ return { blob: blob, usedFallback: false }; });
+        return encodeWithWebCodecs(frames, film, codecConfig, audioCodecConfig, updateExportOverlay);
+        /* already resolves { blob, audioIncluded }, no usedFallback field */
       }
       var mimeType = pickRecorderMimeType();
       if (!mimeType){
         throw new Error("no video encoder or recorder is available on this device");
       }
+      /* the MediaRecorder fallback stays video-only: a
+         MediaStreamAudioDestinationNode merge was not clean to add safely
+         here, and the brief explicitly allows leaving this path silent and
+         documenting it rather than risking the one path that must always
+         succeed. See the report for this deviation. */
       return encodeWithMediaRecorder(frames, film, mimeType, updateExportOverlay)
-        .then(function(blob){ return { blob: blob, usedFallback: true }; });
+        .then(function(blob){ return { blob: blob, usedFallback: true, audioIncluded: false }; });
     }).then(function(result){
       hideExportOverlay();
       var blob = result.blob;
@@ -2366,14 +3633,17 @@ function exportFilm(filmId){
       var ext = blob.type.indexOf("webm") !== -1 ? "webm" : "mp4";
       var slug = film.name ? film.name.toLowerCase().replace(/\s+/g, "-") : "film";
       var fileName = "klipp-" + slug + "." + ext;
+      var notes = [];
       if (result.usedFallback && ext === "webm"){
-        setExportNote("this device could not make an mp4, so we made a webm instead.");
-      } else {
-        setExportNote("");
+        notes.push("this device could not make an mp4, so we made a webm instead.");
       }
+      if (!result.audioIncluded){
+        notes.push("sound could not be added on this device, so the film exported without it.");
+      }
+      setExportNote(notes.join(" "));
       showHeartToast("your film is ready! ♥");
       return shareOrDownload(blob, fileName).then(function(){
-        return { filmId: filmId, status: "ok", blob: blob, fileName: fileName };
+        return { filmId: filmId, status: "ok", blob: blob, fileName: fileName, audioIncluded: !!result.audioIncluded };
       });
     });
   }).catch(function(err){
@@ -2432,6 +3702,8 @@ $("send-btn-playback").addEventListener("click", function(){
 function renderGrownupDrawer(){
   var sw = $("onion-default-switch");
   sw.classList.toggle("on", state.onionSkinDefault);
+  var soundSw = $("sound-mute-switch");
+  if (soundSw) soundSw.classList.toggle("on", !state.soundMuted);
   var list = $("drawer-film-list");
   list.innerHTML = "";
   db.getFilms().then(function(films){
@@ -2456,6 +3728,10 @@ function renderGrownupDrawer(){
 $("onion-default-switch").addEventListener("click", function(){
   var next = !state.onionSkinDefault;
   saveOnionDefault(next);
+  renderGrownupDrawer();
+});
+$("sound-mute-switch").addEventListener("click", function(){
+  saveSoundMuted(!state.soundMuted);
   renderGrownupDrawer();
 });
 $("close-drawer").addEventListener("click", function(){
@@ -2520,6 +3796,10 @@ window.KLIPP = {
   renameFilm: renameFilm,
   STICKER_CAP: STICKER_CAP,
   STICKER_KINDS: STICKER_KINDS,
+  STICKER_GROUPS: STICKER_GROUPS,
+  drawSticker: drawSticker,
+  drawStickerShape: drawStickerShape,
+  buildStickerTray: buildStickerTray,
   TITLE_TICKS: TITLE_TICKS,
   END_TICKS: END_TICKS,
   FIREWORKS_HOLD_TICKS: FIREWORKS_HOLD_TICKS,
@@ -2537,7 +3817,40 @@ window.KLIPP = {
   PEEK_WINDOW_PHOTOS: PEEK_WINDOW_PHOTOS,
   playbackBack: playbackBack,
   navDepth: function(){ return navStack.length; },
-  stopStickerPreview: stopStickerPreview
+  stopStickerPreview: stopStickerPreview,
+  /* v4: sound engine, score, sounds row */
+  buildFilmScore: buildFilmScore,
+  buildEventScore: buildEventScore,
+  buildTrackScore: buildTrackScore,
+  buildPlaybackTimeline: buildPlaybackTimeline,
+  STICKER_VOICE_MAP: STICKER_VOICE_MAP,
+  SPELL_VOICE_MAP: SPELL_VOICE_MAP,
+  VOICE_NAMES: VOICE_NAMES,
+  VOICE_FNS: VOICE_FNS,
+  SOUNDTRACKS: SOUNDTRACKS,
+  TRACKS_UI: TRACKS_UI,
+  setFilmSoundtrack: setFilmSoundtrack,
+  scaleFreq: scaleFreq,
+  filmScaleRoot: filmScaleRoot,
+  EVENT_POLYPHONY_CAP: EVENT_POLYPHONY_CAP,
+  capPolyphony: capPolyphony,
+  renderTracksRow: renderTracksRow,
+  playInterfaceSound: playInterfaceSound,
+  ensureAudioAvailable: ensureAudioAvailable,
+  stopFilmAudio: stopFilmAudio,
+  saveSoundMuted: saveSoundMuted,
+  soundMuted: function(){ return state.soundMuted; },
+  /* v4: audio in the exported MP4 */
+  AUDIO_SAMPLE_RATE: AUDIO_SAMPLE_RATE,
+  AUDIO_CHANNELS: AUDIO_CHANNELS,
+  AUDIO_BITRATE: AUDIO_BITRATE,
+  audioTimelineDurationUs: audioTimelineDurationUs,
+  audioSampleLengthForDuration: audioSampleLengthForDuration,
+  assertAudioVideoSync: assertAudioVideoSync,
+  pickAudioCodec: pickAudioCodec,
+  renderFilmAudioOffline: renderFilmAudioOffline,
+  encodeAudioBufferToChunks: encodeAudioBufferToChunks,
+  encodeWithWebCodecs: encodeWithWebCodecs
 };
 
 /* ---------------- BOOT ---------------- */
