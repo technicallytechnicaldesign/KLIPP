@@ -170,10 +170,35 @@
   /* the studio bar carries six things (back, magic, music, cards, ghost,
      send). At the full 64px circle that measured 430px wide on a 412px
      phone, pushing send off the edge, so this bar alone uses a smaller
-     circle. 52px is still above the 44px tap floor. */
-  .studio-topbar .top-right-btns{gap:8px}
+     circle. 52px is still above the 44px tap floor.
+
+     All six are direct children of the bar rather than back-on-the-left
+     plus a bunched right hand group: with a group, the gap after back was
+     the leftover space (measured 40px) while the other five sat 8px apart,
+     which reads as back being shoved up against magic. One row with
+     space-between gives every gap the same width, whatever the screen. */
   .studio-topbar .round-btn{width:52px;height:52px;font-size:19px}
   .studio-topbar .send-btn{width:52px;height:52px;font-size:18px}
+  /* on a wide screen (a landscape film) six items spread edge to edge look
+     abandoned, so the row is capped and stays left aligned with the back
+     button where the thumb expects it. */
+  .studio-topbar{gap:8px}
+  .studio-topbar > .icon-btn{flex:0 0 auto}
+  @media (min-width:640px){
+    .studio-topbar{justify-content:flex-start;gap:24px}
+  }
+  /* six 52px circles need 366px of the 360px many Android phones actually
+     have (MEASURED, it overflowed by 6), so the circle steps down on narrow
+     screens rather than the row running off the edge. 44px is the tap floor
+     and is never crossed. */
+  @media (max-width:400px){
+    .studio-topbar{padding-left:10px;padding-right:10px;gap:6px}
+    .studio-topbar .round-btn,.studio-topbar .send-btn{width:48px;height:48px;font-size:18px}
+  }
+  @media (max-width:340px){
+    .studio-topbar{gap:4px}
+    .studio-topbar .round-btn,.studio-topbar .send-btn{width:44px;height:44px;font-size:17px}
+  }
   .icon-btn-label{
     font-size:10px;font-weight:800;color:#fff;letter-spacing:.02em;
     text-shadow:0 1px 3px rgba(0,0,0,0.55);
@@ -531,27 +556,25 @@
         <button class="round-btn" id="back-to-shelf" type="button" aria-label="back to shelf">&#8592;</button>
         <span class="icon-btn-label">back</span>
       </div>
-      <div class="top-right-btns">
-        <div class="icon-btn">
-          <button class="round-btn" id="wand-btn" type="button" aria-label="magic wand: stickers and spells">&#10024;</button>
-          <span class="icon-btn-label">magic</span>
-        </div>
-        <div class="icon-btn">
-          <button class="round-btn" id="music-btn" type="button" aria-label="music: pick a tune for this film">&#127925;</button>
-          <span class="icon-btn-label">music</span>
-        </div>
-        <div class="icon-btn">
-          <button class="round-btn" id="cards-edit" type="button" aria-label="title and end cards: turn on or off, write your own words">&#127916;</button>
-          <span class="icon-btn-label">cards</span>
-        </div>
-        <div class="icon-btn">
-          <button class="round-btn" id="ghost-toggle" type="button" aria-label="ghost: see the last picture while you take the next">&#128123;</button>
-          <span class="icon-btn-label">ghost</span>
-        </div>
-        <div class="icon-btn">
-          <button class="send-btn" id="send-btn-studio" type="button" aria-label="send film">&#128233;</button>
-          <span class="icon-btn-label">send</span>
-        </div>
+      <div class="icon-btn">
+        <button class="round-btn" id="wand-btn" type="button" aria-label="magic wand: stickers and spells">&#10024;</button>
+        <span class="icon-btn-label">magic</span>
+      </div>
+      <div class="icon-btn">
+        <button class="round-btn" id="music-btn" type="button" aria-label="music: pick a tune for this film">&#127925;</button>
+        <span class="icon-btn-label">music</span>
+      </div>
+      <div class="icon-btn">
+        <button class="round-btn" id="cards-edit" type="button" aria-label="title and end cards: turn on or off, write your own words">&#127916;</button>
+        <span class="icon-btn-label">cards</span>
+      </div>
+      <div class="icon-btn">
+        <button class="round-btn" id="ghost-toggle" type="button" aria-label="ghost: see the last picture while you take the next">&#128123;</button>
+        <span class="icon-btn-label">ghost</span>
+      </div>
+      <div class="icon-btn">
+        <button class="send-btn" id="send-btn-studio" type="button" aria-label="send film">&#128233;</button>
+        <span class="icon-btn-label">send</span>
       </div>
     </div>
     <div class="filmstrip-wrap" id="filmstrip-wrap">
